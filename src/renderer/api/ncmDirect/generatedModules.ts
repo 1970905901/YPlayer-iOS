@@ -1215,26 +1215,23 @@ ncmModules['/lbs/city/code'] = (query, request) => {
 };
 ncmModules['/like'] = (query, request) => {
   query.like = query.like === false || query.like === 'false' ? false : true;
-  query.cookie = query.cookie || {};
-  if (typeof query.cookie === 'string') {
-    query.cookie += '; os=android; appver=9.0.90';
-  } else {
-    query.cookie.os = 'android';
-    query.cookie.appver = '9.0.90';
-  }
   const data = {
     alg: 'itembased',
     trackId: query.id,
     like: query.like,
     time: '3',
   };
-  return request(`/api/radio/like`, data, createOption(query, 'weapi'));
+  return request(`/api/radio/like`, data, createOption(query, 'eapi')).catch(() => {
+    return request(`/api/radio/like`, data, createOption(query, 'weapi'));
+  });
 };
 ncmModules['/likelist'] = (query, request) => {
   const data = {
     uid: query.uid,
   };
-  return request(`/api/song/like/get`, data, createOption(query, 'weapi'));
+  return request(`/api/song/like/get`, data, createOption(query, 'eapi')).catch(() => {
+    return request(`/api/song/like/get`, data, createOption(query, 'weapi'));
+  });
 };
 ncmModules['/listentogether/accept'] = (query, request) => {
   const data = {

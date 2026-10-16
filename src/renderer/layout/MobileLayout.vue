@@ -103,7 +103,7 @@ provide('openPlaylistDrawer', openPlaylistDrawer);
 }
 
 .mobile-content {
-  @apply flex-1 overflow-auto;
+  @apply flex-1 overflow-y-auto overflow-x-hidden;
 
   // // 只有底部菜单
   // &.has-bottom-menu:not(.has-player) {
@@ -117,7 +117,7 @@ provide('openPlaylistDrawer', openPlaylistDrawer);
 }
 
 .mobile-page {
-  @apply h-full;
+  @apply h-full w-full max-w-full overflow-x-hidden;
 }
 
 // 底部菜单固定在底部

@@ -57,21 +57,21 @@
             <div class="absolute inset-0 bg-gradient-to-r from-black/70 via-black/40 to-black/20" />
 
             <!-- Content -->
-            <div class="relative flex h-full flex-col justify-between p-5 md:p-6">
+            <div class="relative flex h-full flex-col justify-between p-3.5 md:p-6 min-w-0 overflow-hidden">
               <!-- Top: Title + Badge -->
-              <div>
-                <h3 class="text-2xl font-black leading-tight tracking-wider text-white md:text-3xl">
+              <div class="min-w-0">
+                <h3 class="truncate text-lg md:text-2xl lg:text-3xl font-black leading-tight tracking-wider text-white">
                   {{ t('comp.homeHero.dailyRecommend') }}
                 </h3>
                 <span
-                  class="mt-1.5 inline-flex items-center gap-1 rounded-md bg-white/15 px-2 py-0.5 text-[11px] font-semibold text-white/80 backdrop-blur-sm"
+                  class="mt-1.5 inline-flex items-center gap-1 rounded-md bg-white/15 px-2 py-0.5 text-[10px] md:text-[11px] font-semibold text-white/80 backdrop-blur-sm"
                 >
                   <i class="ri-calendar-check-fill" />
                   {{ dayRecommendSongs.length }} {{ t('comp.homeHero.songs') }}
                 </span>
               </div>
               <!-- Bottom: Song List + Play -->
-              <div class="flex items-end justify-between gap-4">
+              <div class="flex items-end justify-between gap-2 min-w-0">
                 <!-- Song Preview List (bottom-left) -->
                 <div
                   v-if="dayRecommendSongs.length > 0"
@@ -94,10 +94,10 @@
                   </div>
                 </div>
                 <button
-                  class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-white/90 text-neutral-900 shadow-lg transition-all duration-300 hover:scale-110 hover:bg-white active:scale-95"
+                  class="flex h-9 w-9 md:h-11 md:w-11 flex-shrink-0 items-center justify-center rounded-full bg-white/90 text-neutral-900 shadow-lg transition-all duration-300 hover:scale-110 hover:bg-white active:scale-95 ml-auto"
                   @click.stop="playDayRecommend"
                 >
-                  <i class="ri-play-fill ml-0.5 text-xl" />
+                  <i class="ri-play-fill ml-0.5 text-lg md:text-xl" />
                 </button>
               </div>
             </div>
@@ -125,10 +125,10 @@
             <div class="absolute inset-0 bg-gradient-to-br from-black/10 to-black/30" />
 
             <!-- Content -->
-            <div class="relative flex h-full items-center gap-4 p-5">
+            <div class="relative flex h-full items-center gap-2.5 md:gap-4 p-3 md:p-5 min-w-0 overflow-hidden">
               <!-- Album Cover -->
               <div
-                class="fm-cover relative aspect-square flex-shrink-0 overflow-hidden rounded-xl shadow-lg transition-transform duration-500 group-hover:scale-[1.03]"
+                class="fm-cover relative aspect-square flex-shrink-0 overflow-hidden rounded-xl shadow-md transition-transform duration-500 group-hover:scale-[1.03]"
               >
                 <img
                   v-if="fmCurrentCover"
@@ -137,10 +137,10 @@
                   class="h-full w-full object-cover"
                 />
                 <div v-else class="flex h-full w-full items-center justify-center bg-white/10">
-                  <i class="ri-radio-fill text-3xl text-white/40" />
+                  <i class="ri-radio-fill text-2xl md:text-3xl text-white/40" />
                 </div>
                 <!-- Playing equalizer overlay on cover -->
-                <div v-if="isFmPlaying" class="absolute bottom-2 right-2 flex items-end gap-[2px]">
+                <div v-if="isFmPlaying" class="absolute bottom-1.5 right-1.5 md:bottom-2 md:right-2 flex items-end gap-[2px]">
                   <span
                     v-for="i in 3"
                     :key="i"
@@ -151,45 +151,45 @@
               </div>
 
               <!-- Song Info & Controls -->
-              <div class="flex min-w-0 flex-1 flex-col justify-between self-stretch py-0.5">
-                <div class="min-w-0">
-                  <h3 class="truncate text-base font-bold text-white md:text-lg">
+              <div class="flex min-w-0 flex-1 flex-col justify-between self-stretch py-0.5 overflow-hidden">
+                <div class="min-w-0 overflow-hidden">
+                  <h3 class="truncate text-sm md:text-lg font-bold text-white">
                     {{ fmCurrentSong?.name || t('comp.homeHero.discoverMusic') }}
                   </h3>
-                  <p class="mt-0.5 truncate text-sm text-white/60">
+                  <p class="mt-0.5 truncate text-xs md:text-sm text-white/60">
                     {{ fmCurrentArtist }}
                   </p>
                 </div>
-                <div class="flex items-center justify-between">
+                <div class="flex items-center justify-between gap-1 min-w-0">
                   <!-- Playback Controls -->
-                  <div class="flex items-center gap-3">
+                  <div class="flex items-center gap-1.5 md:gap-3 flex-shrink-0">
                     <button
-                      class="flex h-8 w-8 items-center justify-center rounded-full text-white/60 transition-colors hover:text-white"
+                      class="hidden md:flex h-8 w-8 items-center justify-center rounded-full text-white/60 transition-colors hover:text-white"
                       :title="t('comp.homeHero.fmTrash')"
                       @click.stop="handleFmTrash"
                     >
                       <i class="ri-thumb-down-line text-lg" />
                     </button>
                     <button
-                      class="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white transition-all duration-300 hover:scale-110 hover:bg-white/30 active:scale-95"
+                      class="flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-full bg-white/20 text-white transition-all duration-300 hover:scale-110 hover:bg-white/30 active:scale-95"
                       @click.stop="handleFmPlay"
                     >
                       <i
                         :class="isFmPlaying ? 'ri-pause-fill' : 'ri-play-fill ml-0.5'"
-                        class="text-xl"
+                        class="text-base md:text-xl"
                       />
                     </button>
                     <button
-                      class="flex h-8 w-8 items-center justify-center rounded-full text-white/60 transition-colors hover:text-white"
+                      class="flex h-7 w-7 md:h-8 md:w-8 items-center justify-center rounded-full text-white/60 transition-colors hover:text-white"
                       :title="t('comp.homeHero.fmNext')"
                       @click.stop="handleFmNext"
                     >
-                      <i class="ri-skip-forward-fill text-lg" />
+                      <i class="ri-skip-forward-fill text-base md:text-lg" />
                     </button>
                   </div>
 
                   <!-- FM Badge -->
-                  <span class="flex items-center gap-1 text-xs font-semibold text-white/50">
+                  <span class="hidden sm:flex items-center gap-1 text-[11px] md:text-xs font-semibold text-white/50 truncate">
                     <i class="ri-radio-fill" />
                     {{ t('comp.homeHero.personalFm') }}
                   </span>
@@ -653,20 +653,44 @@ onActivated(() => {
   }
 }
 
-/* Hero grid — left wider, right narrower, equal row height */
+/* Hero grid — 每日推荐卡片与右侧卡片大小严格一致（1:1），防止内容撑大导致首页左右滑动 */
+.hero-section {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 .hero-grid {
-  grid-template-columns: 3fr 2fr;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+  max-width: 100%;
 }
 
 /* Cards fill grid row height equally */
 .hero-grid > .hero-card {
   height: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 .hero-grid > .hero-card > .daily-card,
 .hero-grid > .hero-card > .fm-card {
   height: 100%;
-  min-height: 140px;
-  max-height: 180px;
+  min-height: 150px;
+  max-height: 160px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+@media (min-width: 768px) {
+  .hero-grid > .hero-card > .daily-card,
+  .hero-grid > .hero-card > .fm-card {
+    min-height: 170px;
+    max-height: 180px;
+  }
 }
 
 /* Card animation */
@@ -705,7 +729,8 @@ onActivated(() => {
 
 /* FM cover — sized relative to card, leaving padding space */
 .fm-cover {
-  height: calc(100% - 6px);
+  height: calc(100% - 10px);
+  max-width: 45%;
 }
 
 /* FM equalizer bars */

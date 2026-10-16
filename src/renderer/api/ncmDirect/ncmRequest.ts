@@ -94,12 +94,17 @@ export const ncmRequest = async (uri: string, data: any = {}, options: any = {})
     crypto = 'eapi';
   }
 
-  const csrfToken = cookie['__csrf'] || '';
+  let csrfToken = cookie['__csrf'] || '';
 
   switch (crypto) {
     case 'weapi':
       headers['Referer'] = options.domain || DOMAIN;
       headers['User-Agent'] = options.ua || userAgentMap.weapi;
+      if (!csrfToken) {
+        csrfToken = CryptoJS.lib.WordArray.random(16).toString();
+        cookie['__csrf'] = csrfToken;
+        headers['Cookie'] = cookieObjToString(cookie);
+      }
       data.csrf_token = csrfToken;
       encryptData = encrypt.weapi(data);
       url = (options.domain || DOMAIN) + '/weapi/' + uri.substr(5);

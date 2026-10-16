@@ -374,8 +374,13 @@ const fetchData = async () => {
 
   if (!id || type === 'dailyRecommend') return;
 
-  // 检查是否需要加载数据
+  // 检查是否需要加载数据 (如果是用户“我喜欢的音乐”歌单，允许重新拉取保证刚收藏/取消收藏的歌曲及时同步展示)
+  const isFavPlaylist =
+    musicStore.currentListInfo?.specialType === 5 ||
+    musicStore.currentListInfo?.name?.includes('我喜欢');
+
   if (
+    !isFavPlaylist &&
     musicStore.currentListInfo?.id?.toString() === id.toString() &&
     musicStore.currentMusicList &&
     musicStore.currentMusicList.length > 0

@@ -84,13 +84,41 @@ export const getImgUrl = (url: string | undefined, size: string = '') => {
   // base64 Data URL 和本地文件路径不需要添加尺寸参数
   if (url.startsWith('data:') || url.startsWith('local://')) return url;
 
-  if (url.includes('thumbnail')) {
-    // 只替换最后一个 thumbnail 参数的尺寸
-    return url.replace(/thumbnail=\d+y\d+(?!.*thumbnail)/, `thumbnail=${size}`);
+  // 保证 HTTPS 链接
+  let cleanUrl = url.replace(/^http:\/\//i, 'https://');
+
+  if (cleanUrl.includes('thumbnail=')) {
+    // 替换现有的 thumbnail 尺寸参数
+    return cleanUrl.replace(/thumbnail=\d+y\d+(?!.*thumbnail)/, `thumbnail=${size}`);
   }
 
-  const imgUrl = `${url}?param=${size}`;
-  return imgUrl;
+  // 移除已有 param 尺寸限制参数，防止重复拼接低清参数导致模糊
+  cleanUrl = cleanUrl.replace(/[?&]param=\d+y\d+/g, '').replace(/[?&]param=\d+/g, '');
+
+  if (!size) {
+    return cleanUrl;
+  }
+
+  const separator = cleanUrl.includes('?') ? '&' : '?';
+  return `${cleanUrl}${separator}param=${size}`;
+};
+
+/**
+ * 提取歌曲对象的最佳封面图片 URL（兼容各种网易云数据结构）
+ */
+export const getTrackCoverUrl = (track: any, size: string = '1200y1200'): string => {
+  if (!track) return '';
+  const rawUrl =
+    track.picUrl ||
+    track.al?.picUrl ||
+    track.album?.picUrl ||
+    track.song?.album?.picUrl ||
+    track.song?.al?.picUrl ||
+    (track.song?.artists && track.song?.artists[0]?.img1v1Url) ||
+    track.coverImgUrl ||
+    track.cover ||
+    '';
+  return getImgUrl(rawUrl, size);
 };
 
 export const isMobile = computed(() => {

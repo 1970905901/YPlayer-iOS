@@ -1,7 +1,7 @@
 import { nativeBridge } from '@/services/nativeBridge';
 import type { AudioOutputDevice } from '@/types/audio';
 import type { SongResult } from '@/types/music';
-import { getImgUrl, isElectron } from '@/utils';
+import { getImgUrl, getTrackCoverUrl, isElectron } from '@/utils';
 
 class AudioService {
   private audio: HTMLAudioElement;
@@ -180,7 +180,7 @@ class AudioService {
 
       // 提供最高 1200x1200HD 封面，保证锁屏点击放大封面依然超高清显示
       const artwork = ['96', '128', '256', '512', '1024', '1200'].map((size) => ({
-        src: getImgUrl(track.picUrl, `${size}y${size}`),
+        src: getTrackCoverUrl(track, `${size}y${size}`),
         type: 'image/jpeg',
         sizes: `${size}x${size}`
       }));
@@ -248,7 +248,7 @@ class AudioService {
         ? this.currentTrack.al.name
         : (this.currentTrack as any).song?.album?.name;
       // 传递 1200x1200HD 超清封面图片，点击锁屏封面放大后不再模糊
-      const picUrl = getImgUrl(this.currentTrack.picUrl, '1200y1200');
+      const picUrl = getTrackCoverUrl(this.currentTrack, '1200y1200');
 
       nativeBridge.updatePlayState({
         isPlaying: isPlaying !== undefined ? isPlaying : !this.audio.paused,

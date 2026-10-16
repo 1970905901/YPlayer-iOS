@@ -1,7 +1,7 @@
 <template>
-  <div class="home-container h-full w-full bg-white dark:bg-black transition-colors duration-500">
-    <n-scrollbar class="h-full">
-      <div class="home-content w-full pb-32 page-padding">
+  <div class="home-container h-full w-full max-w-full overflow-x-hidden bg-white dark:bg-black transition-colors duration-500">
+    <n-scrollbar class="h-full w-full" :x-scrollable="false">
+      <div class="home-content w-full max-w-full overflow-x-hidden pb-32 page-padding">
         <!-- Hero Section -->
         <home-hero />
 
@@ -52,6 +52,15 @@ const router = useRouter();
 <style lang="scss" scoped>
 .home-container {
   position: relative;
+  overflow-x: hidden !important;
+  max-width: 100vw;
+  width: 100%;
+}
+
+.home-content {
+  overflow-x: hidden !important;
+  max-width: 100%;
+  width: 100%;
 }
 
 /* Global animation optimization - use will-change sparingly */

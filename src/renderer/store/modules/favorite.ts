@@ -13,6 +13,7 @@ export const useFavoriteStore = defineStore('favorite', () => {
   // ==================== 状态 ====================
   const favoriteList = ref<Array<number | string>>(getLocalStorageItem('favoriteList', []));
   const dislikeList = ref<Array<number | string>>(getLocalStorageItem('dislikeList', []));
+  const recentlyRemoved = ref<Set<string>>(new Set());
 
   // ==================== Actions ====================
 
@@ -21,6 +22,8 @@ export const useFavoriteStore = defineStore('favorite', () => {
    */
   const addToFavorite = async (id: number | string) => {
     if (id === undefined || id === null || id === '') return;
+
+    recentlyRemoved.value.delete(String(id));
 
     // 检查是否已存在
     const isAlreadyInList = favoriteList.value.some((existingId) =>
@@ -47,6 +50,7 @@ export const useFavoriteStore = defineStore('favorite', () => {
           if (res.data?.code !== 200 && res.data?.code !== undefined) {
             console.warn('收藏歌曲API返回非200状态:', res.data);
           }
+          userStore.initializePlaylist().catch(() => {});
         } catch (error) {
           console.error('收藏歌曲API调用失败:', error);
         }
@@ -59,6 +63,8 @@ export const useFavoriteStore = defineStore('favorite', () => {
    */
   const removeFromFavorite = async (id: number | string) => {
     if (id === undefined || id === null || id === '') return;
+
+    recentlyRemoved.value.add(String(id));
 
     // 对于B站视频，需要根据bvid和cid来匹配
     if (typeof id === 'string' && id.includes('--')) {
@@ -83,6 +89,7 @@ export const useFavoriteStore = defineStore('favorite', () => {
             if (res.data?.code !== 200 && res.data?.code !== undefined) {
               console.warn('取消收藏歌曲API返回非200状态:', res.data);
             }
+            userStore.initializePlaylist().catch(() => {});
           } catch (error) {
             console.error('取消收藏歌曲API调用失败:', error);
           }
@@ -127,10 +134,12 @@ export const useFavoriteStore = defineStore('favorite', () => {
         const res = await getLikedList(userStore.user.userId);
         if (res.data?.ids && Array.isArray(res.data.ids) && res.data.ids.length > 0) {
           const serverList: number[] = [...res.data.ids].reverse();
-          const nonNcmLocal = localList.filter(
-            (id) => typeof id === 'string' && id.includes('--')
+          const filteredServer = serverList.filter((id) => !recentlyRemoved.value.has(String(id)));
+          const serverSet = new Set(filteredServer.map(String));
+          const localOnly = localList.filter(
+            (id) => !recentlyRemoved.value.has(String(id)) && !serverSet.has(String(id))
           );
-          favoriteList.value = Array.from(new Set([...serverList, ...nonNcmLocal]));
+          favoriteList.value = Array.from(new Set([...filteredServer, ...localOnly]));
           synced = true;
           console.log(`[Favorite] 已从网易云 likelist 同步 ${serverList.length} 首收藏歌曲`);
         }
@@ -152,10 +161,12 @@ export const useFavoriteStore = defineStore('favorite', () => {
             const trackIds = detailRes.data?.playlist?.trackIds;
             if (Array.isArray(trackIds) && trackIds.length > 0) {
               const serverList: number[] = trackIds.map((t: any) => t.id);
-              const nonNcmLocal = localList.filter(
-                (id) => typeof id === 'string' && id.includes('--')
+              const filteredServer = serverList.filter((id) => !recentlyRemoved.value.has(String(id)));
+              const serverSet = new Set(filteredServer.map(String));
+              const localOnly = localList.filter(
+                (id) => !recentlyRemoved.value.has(String(id)) && !serverSet.has(String(id))
               );
-              favoriteList.value = Array.from(new Set([...serverList, ...nonNcmLocal]));
+              favoriteList.value = Array.from(new Set([...filteredServer, ...localOnly]));
               synced = true;
               console.log(
                 `[Favorite] 已从网易云用户歌单(${favPlaylist.name})同步 ${serverList.length} 首歌曲`

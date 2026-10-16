@@ -51,28 +51,6 @@ final class NowPlayingManager {
             return .success
         }
 
-        // 彻底解绑并禁用快进/快退指令，确保 iOS 控制中心与锁屏展示上一首/下一首图标 (|<< / >>|)
-        commandCenter.skipForwardCommand.removeTarget(nil)
-        commandCenter.skipBackwardCommand.removeTarget(nil)
-        commandCenter.seekForwardCommand.removeTarget(nil)
-        commandCenter.seekBackwardCommand.removeTarget(nil)
-        commandCenter.skipForwardCommand.isEnabled = false
-        commandCenter.skipBackwardCommand.isEnabled = false
-        commandCenter.seekForwardCommand.isEnabled = false
-        commandCenter.seekBackwardCommand.isEnabled = false
-
-        commandCenter.nextTrackCommand.isEnabled = true
-        commandCenter.nextTrackCommand.addTarget { [weak self] _ in
-            self?.dispatchRemoteCommand("nextTrack")
-            return .success
-        }
-
-        commandCenter.previousTrackCommand.isEnabled = true
-        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
-            self?.dispatchRemoteCommand("previousTrack")
-            return .success
-        }
-
         commandCenter.changePlaybackPositionCommand.isEnabled = true
         commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
             if let positionEvent = event as? MPChangePlaybackPositionCommandEvent {
@@ -80,6 +58,41 @@ final class NowPlayingManager {
                 return .success
             }
             return .commandFailed
+        }
+
+        enforceRemoteCommands()
+    }
+
+    /// 强制校准控制中心按钮：彻底禁用 15 秒快进快退，启用标准的上一首/下一首按钮
+    private func enforceRemoteCommands() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+
+        // 彻底停用快进/快退区间指令 (15s)，清空首选间隔
+        commandCenter.skipForwardCommand.removeTarget(nil)
+        commandCenter.skipBackwardCommand.removeTarget(nil)
+        commandCenter.skipForwardCommand.preferredIntervals = []
+        commandCenter.skipBackwardCommand.preferredIntervals = []
+        commandCenter.skipForwardCommand.isEnabled = false
+        commandCenter.skipBackwardCommand.isEnabled = false
+
+        commandCenter.seekForwardCommand.removeTarget(nil)
+        commandCenter.seekBackwardCommand.removeTarget(nil)
+        commandCenter.seekForwardCommand.isEnabled = false
+        commandCenter.seekBackwardCommand.isEnabled = false
+
+        // 强力启用上一首与下一首指令并挂载原生事件
+        commandCenter.previousTrackCommand.removeTarget(nil)
+        commandCenter.previousTrackCommand.isEnabled = true
+        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
+            self?.dispatchRemoteCommand("previousTrack")
+            return .success
+        }
+
+        commandCenter.nextTrackCommand.removeTarget(nil)
+        commandCenter.nextTrackCommand.isEnabled = true
+        commandCenter.nextTrackCommand.addTarget { [weak self] _ in
+            self?.dispatchRemoteCommand("nextTrack")
+            return .success
         }
     }
 
@@ -94,7 +107,7 @@ final class NowPlayingManager {
     private var baseTitle: String = ""
     private var currentLyric: String = ""
 
-    /// 更新锁屏与控制中心单句歌词
+    /// 更新锁屏与控制中心单句歌词（单独占据第二行，不拼接歌手名）
     func updateLyric(text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -103,11 +116,7 @@ final class NowPlayingManager {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? self.currentInfo
-            if !self.baseArtist.isEmpty {
-                info[MPMediaItemPropertyArtist] = "\(trimmed) · \(self.baseArtist)"
-            } else {
-                info[MPMediaItemPropertyArtist] = trimmed
-            }
+            info[MPMediaItemPropertyArtist] = trimmed
             self.currentInfo = info
             MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         }
@@ -119,10 +128,14 @@ final class NowPlayingManager {
         baseTitle = info.title
         currentLyric = ""
 
+        enforceRemoteCommands()
+
         var nowPlayingInfo = [String: Any]()
 
-        nowPlayingInfo[MPMediaItemPropertyTitle] = info.title
-        nowPlayingInfo[MPMediaItemPropertyArtist] = info.artist
+        // 将歌手名放置在歌曲名后面（同字号、同粗细、同颜色显示在标题行）
+        let combinedTitle = info.artist.isEmpty ? info.title : "\(info.title) - \(info.artist)"
+        nowPlayingInfo[MPMediaItemPropertyTitle] = combinedTitle
+        nowPlayingInfo[MPMediaItemPropertyArtist] = "" // 专属预留给动态滚动的单句歌词
         nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = info.album
         nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = info.duration
         nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = info.currentTime

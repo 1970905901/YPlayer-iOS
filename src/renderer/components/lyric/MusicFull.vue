@@ -19,8 +19,10 @@
       id="drawer-target"
       :class="[config.theme]"
       class="relative z-10"
-      @touchstart="handleDrawerTouchStart"
+      @touchstart.passive="handleDrawerTouchStart"
+      @touchmove="handleDrawerTouchMove"
       @touchend="handleDrawerTouchEnd"
+      @touchcancel="handleDrawerTouchEnd"
     >
       <!-- 左侧关闭按钮 -->
       <div
@@ -725,28 +727,59 @@ const closeMusicFull = () => {
 let drawerTouchStartX = 0;
 let drawerTouchStartY = 0;
 let drawerTouchStartTime = 0;
+let hasTriggeredFullSwipe = false;
 
 const handleDrawerTouchStart = (e: TouchEvent) => {
   if (e.touches.length !== 1) return;
   drawerTouchStartX = e.touches[0].clientX;
   drawerTouchStartY = e.touches[0].clientY;
   drawerTouchStartTime = Date.now();
+  hasTriggeredFullSwipe = false;
+};
+
+const handleDrawerTouchMove = (e: TouchEvent) => {
+  if (hasTriggeredFullSwipe) return;
+  if (e.touches.length !== 1) return;
+
+  const currentX = e.touches[0].clientX;
+  const currentY = e.touches[0].clientY;
+  const deltaX = currentX - drawerTouchStartX;
+  const deltaY = currentY - drawerTouchStartY;
+
+  // 1. 侧滑返回：滑动中一旦向右滑动超过 50px 且横向位移大于纵向位移，立即退出播放页
+  if (deltaX > 50 && deltaX > Math.abs(deltaY) * 1.1) {
+    hasTriggeredFullSwipe = true;
+    closeMusicFull();
+    return;
+  }
+
+  // 2. 下滑关闭：向下滑动超过 70px
+  if (deltaY > 70 && deltaY > Math.abs(deltaX) * 1.1 && drawerTouchStartY < 280) {
+    hasTriggeredFullSwipe = true;
+    closeMusicFull();
+    return;
+  }
 };
 
 const handleDrawerTouchEnd = (e: TouchEvent) => {
+  if (hasTriggeredFullSwipe) return;
   if (e.changedTouches.length !== 1) return;
 
   const deltaX = e.changedTouches[0].clientX - drawerTouchStartX;
   const deltaY = e.changedTouches[0].clientY - drawerTouchStartY;
   const elapsed = Date.now() - drawerTouchStartTime;
 
-  // 1. 侧滑关闭：从左往右滑动（横向位移 > 60px 且横向位移大于纵向位移）
-  const isSideSwipeRight = deltaX > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3;
-  // 2. 下滑关闭：向下滑动 > 80px
-  const isSwipeDown = deltaY > 80 && Math.abs(deltaY) > Math.abs(deltaX) * 1.3;
-
-  if (elapsed < 600 && (isSideSwipeRight || isSwipeDown)) {
-    closeMusicFull();
+  if (elapsed < 500) {
+    if (deltaX > 40 && deltaX > Math.abs(deltaY) * 1.1) {
+      hasTriggeredFullSwipe = true;
+      closeMusicFull();
+      return;
+    }
+    if (deltaY > 50 && deltaY > Math.abs(deltaX) * 1.1) {
+      hasTriggeredFullSwipe = true;
+      closeMusicFull();
+      return;
+    }
   }
 };
 

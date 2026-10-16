@@ -153,10 +153,8 @@ class AudioService {
 
     try {
       if ('mediaSession' in navigator && navigator.mediaSession.metadata) {
-        const artists = this.currentTrack?.ar
-          ? this.currentTrack.ar.map((a: any) => a.name).join('/')
-          : (this.currentTrack as any)?.song?.artists?.map((a: any) => a.name).join('/') || '';
-        navigator.mediaSession.metadata.artist = artists ? `${trimmed} · ${artists}` : trimmed;
+        // 歌词单独展示在副标题位置，不添加歌手名（歌手名已合并至标题行，保持同字号、同粗细、同颜色）
+        navigator.mediaSession.metadata.artist = trimmed;
       }
     } catch (e) {}
 
@@ -171,22 +169,39 @@ class AudioService {
 
       const artists = track.ar
         ? track.ar.map((a) => a.name)
-        : track.song.artists?.map((a) => a.name);
-      const album = track.al ? track.al.name : track.song.album.name;
-      // 上限提到 1024 提升 SMTC/AMLL 等系统媒体控件的封面清晰度（#595）；
-      // 走 getImgUrl 以正确处理 data:/local:// 封面与已带参数的 URL
-      const artwork = ['96', '128', '192', '256', '384', '512', '1024'].map((size) => ({
+        : (track as any).song?.artists?.map((a: any) => a.name);
+      const artistsStr = artists ? artists.join(' / ') : '';
+      const album = track.al ? track.al.name : (track as any).song?.album?.name;
+
+      // 将歌手名放置在歌曲名后面（同字号、同粗细、同颜色显示在标题行）
+      const combinedTitle = artistsStr ? `${track.name || ''} - ${artistsStr}` : track.name || '';
+
+      // 提供最高 1200x1200HD 封面，保证锁屏点击放大封面依然超高清显示
+      const artwork = ['96', '128', '256', '512', '1024', '1200'].map((size) => ({
         src: getImgUrl(track.picUrl, `${size}y${size}`),
-        type: 'image/jpg',
+        type: 'image/jpeg',
         sizes: `${size}x${size}`
       }));
 
       navigator.mediaSession.metadata = new window.MediaMetadata({
-        title: track.name || '',
-        artist: artists ? artists.join(',') : '',
+        title: combinedTitle,
+        artist: this.currentLyric || '', // 专属预留给动态滚动的单句歌词
         album: album || '',
         artwork
       });
+
+      // 每次切换歌曲时再次确保禁用 15 秒快进快退，激活上一首/下一首
+      try {
+        navigator.mediaSession.setActionHandler('seekbackward', null);
+        navigator.mediaSession.setActionHandler('seekforward', null);
+        navigator.mediaSession.setActionHandler('previoustrack', () => {
+          this.emit('previoustrack');
+        });
+        navigator.mediaSession.setActionHandler('nexttrack', () => {
+          this.emit('nexttrack');
+        });
+      } catch (e) {}
+
       this.syncNativePlayState(!this.audio.paused);
     } catch (error) {
       console.error('更新媒体会话元数据时出错:', error);
@@ -230,7 +245,8 @@ class AudioService {
       const album = this.currentTrack.al
         ? this.currentTrack.al.name
         : (this.currentTrack as any).song?.album?.name;
-      const picUrl = getImgUrl(this.currentTrack.picUrl, '500y500');
+      // 传递 1200x1200HD 超清封面图片，点击锁屏封面放大后不再模糊
+      const picUrl = getImgUrl(this.currentTrack.picUrl, '1200y1200');
 
       nativeBridge.updatePlayState({
         isPlaying: isPlaying !== undefined ? isPlaying : !this.audio.paused,

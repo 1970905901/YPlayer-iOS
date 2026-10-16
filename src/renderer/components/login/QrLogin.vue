@@ -1,9 +1,10 @@
 <script lang="ts" setup>
 import { useMessage } from 'naive-ui';
+import QRCode from 'qrcode';
 import { onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import { checkQr, createQr, getQrKey, getUserDetail } from '@/api/login';
+import { checkQr, getQrKey, getUserDetail } from '@/api/login';
 import { setAnimationClass } from '@/utils';
 
 defineOptions({
@@ -38,9 +39,22 @@ const loadLogin = async () => {
     }
 
     const qrKey = await getQrKey();
-    const key = qrKey.data.data.unikey;
-    const { data } = await createQr(key);
-    qrUrl.value = data.data.qrimg;
+    const key = qrKey.data?.data?.unikey || qrKey.data?.unikey;
+    if (!key) {
+      throw new Error('未获取到二维码 Key');
+    }
+
+    // 客户端直出高清扫码二维码
+    const qrDataUrl = await QRCode.toDataURL(`https://music.163.com/login?codekey=${key}`, {
+      margin: 2,
+      width: 256,
+      color: {
+        dark: '#000000',
+        light: '#ffffff'
+      }
+    });
+
+    qrUrl.value = qrDataUrl;
     qrStatus.value = 'active';
 
     const timer = timerIsQr(key);

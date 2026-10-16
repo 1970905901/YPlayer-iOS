@@ -80,6 +80,38 @@ modulesMap['/likelist'] = `(query, request) => {
   return request(\`/api/song/like/get\`, data, createOption(query, 'weapi'));
 }`;
 
+modulesMap['/login/qr/key'] = `(query, request) => {
+  const data = {
+    type: 1,
+  };
+  return request(\`/api/login/qrcode/unikey\`, data, createOption(query, 'weapi')).then(result => ({
+    status: 200,
+    body: {
+      data: result.body,
+      code: 200,
+    },
+    cookie: result.cookie,
+  }));
+}`;
+
+modulesMap['/login/qr/check'] = `(query, request) => {
+  const data = {
+    key: query.key,
+    type: 1,
+  };
+  return request(\`/api/login/qrcode/client/login\`, data, createOption(query, 'weapi')).then(result => ({
+    status: 200,
+    body: {
+      ...result.body,
+      cookie: Array.isArray(result.cookie) ? result.cookie.join(';') : (result.cookie || ''),
+    },
+    cookie: result.cookie,
+  })).catch(() => ({
+    status: 200,
+    body: { code: 800 },
+  }));
+}`;
+
 console.log(`Successfully parsed ${supportedCount} of ${files.length} modules.`);
 
 const outputHeader = `// @ts-nocheck

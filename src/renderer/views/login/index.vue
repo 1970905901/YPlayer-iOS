@@ -18,21 +18,16 @@
 
         <!-- 登录内容区域 -->
         <div class="login-content">
-          <!-- 过渡动画包装器 -->
-          <transition
-            name="login-content"
-            mode="out-in"
-            enter-active-class="animate__animated animate__fadeIn"
-            leave-active-class="animate__animated animate__fadeOut"
-          >
+          <!-- 平滑过渡动画 -->
+          <transition name="fade" mode="out-in">
             <!-- 二维码登录组件 -->
-            <div v-if="activeMode === LoginMode.QR && !isTransitioning" key="qr" class="phone">
+            <div v-if="activeMode === LoginMode.QR" key="qr" class="phone">
               <qr-login @login-success="handleLoginSuccess" @login-error="handleLoginError" />
             </div>
 
             <!-- 手机号登录 -->
             <div
-              v-else-if="activeMode === LoginMode.PHONE && !isTransitioning"
+              v-else-if="activeMode === LoginMode.PHONE"
               key="phone"
               class="phone"
             >
@@ -59,7 +54,7 @@
 
             <!-- UID登录组件 -->
             <div
-              v-else-if="activeMode === LoginMode.UID && !isTransitioning"
+              v-else-if="activeMode === LoginMode.UID"
               key="uid"
               class="phone"
             >
@@ -68,7 +63,7 @@
 
             <!-- Cookie登录组件 -->
             <div
-              v-else-if="activeMode === LoginMode.COOKIE && !isTransitioning"
+              v-else-if="activeMode === LoginMode.COOKIE"
               key="token"
               class="phone"
             >
@@ -112,8 +107,6 @@ const userStore = useUserStore();
 
 // 当前激活的登录模式
 const activeMode = ref<LoginMode>(LoginMode.QR);
-// 用于控制内容切换动画
-const isTransitioning = ref(false);
 
 // 登录选项配置
 const loginTabs = computed(() => [
@@ -168,17 +161,9 @@ const loginPhone = async () => {
   }
 };
 
-// 切换登录模式（带动画效果）
+// 切换登录模式
 const switchToMode = (mode: LoginMode) => {
-  if (mode === activeMode.value) return;
-
-  isTransitioning.value = true;
-  setTimeout(() => {
-    activeMode.value = mode;
-    setTimeout(() => {
-      isTransitioning.value = false;
-    }, 50);
-  }, 150);
+  activeMode.value = mode;
 };
 
 // 通用登录成功处理

@@ -54,7 +54,8 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.translatesAutoresizingMaskIntoConstraints = false
-        webView.allowsBackForwardNavigationGestures = true
+        // 禁用浏览器历史原生的边缘前进后退拦截手势，确保侧滑返回完全由页面抽屉与播放器手势响应
+        webView.allowsBackForwardNavigationGestures = false
         webView.isOpaque = false
         webView.backgroundColor = .clear
 

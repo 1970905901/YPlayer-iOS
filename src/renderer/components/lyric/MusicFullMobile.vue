@@ -15,8 +15,10 @@
         { 'is-landscape': isLandscape },
         { 'is-dark': isDark }
       ]"
-      @touchstart="handleDrawerTouchStart"
+      @touchstart.passive="handleDrawerTouchStart"
+      @touchmove="handleDrawerTouchMove"
       @touchend="handleDrawerTouchEnd"
+      @touchcancel="handleDrawerTouchEnd"
     >
       <!-- 顶部控制按钮 -->
       <div v-if="playMusic?.playLoading" class="loading-overlay">
@@ -1020,15 +1022,43 @@ const closeMusicFull = () => {
 let drawerTouchStartX = 0;
 let drawerTouchStartY = 0;
 let drawerTouchStartTime = 0;
+let hasTriggeredSwipe = false;
 
 const handleDrawerTouchStart = (e: TouchEvent) => {
   if (e.touches.length !== 1) return;
   drawerTouchStartX = e.touches[0].clientX;
   drawerTouchStartY = e.touches[0].clientY;
   drawerTouchStartTime = Date.now();
+  hasTriggeredSwipe = false;
+};
+
+const handleDrawerTouchMove = (e: TouchEvent) => {
+  if (hasTriggeredSwipe) return;
+  if (e.touches.length !== 1) return;
+  if (isThumbDragging.value || isMouseDragging.value) return;
+
+  const currentX = e.touches[0].clientX;
+  const currentY = e.touches[0].clientY;
+  const deltaX = currentX - drawerTouchStartX;
+  const deltaY = currentY - drawerTouchStartY;
+
+  // 1. 侧滑返回：滑动过程中一旦向右滑动超过 50px 且横向滑动大于纵向滑动，立即平滑退出播放页
+  if (deltaX > 50 && deltaX > Math.abs(deltaY) * 1.1) {
+    hasTriggeredSwipe = true;
+    closeMusicFull();
+    return;
+  }
+
+  // 2. 下滑关闭：在顶部区域向下滑动超过 70px
+  if (deltaY > 70 && deltaY > Math.abs(deltaX) * 1.1 && drawerTouchStartY < 280) {
+    hasTriggeredSwipe = true;
+    closeMusicFull();
+    return;
+  }
 };
 
 const handleDrawerTouchEnd = (e: TouchEvent) => {
+  if (hasTriggeredSwipe) return;
   if (e.changedTouches.length !== 1) return;
   if (isThumbDragging.value || isMouseDragging.value) return;
 
@@ -1036,13 +1066,17 @@ const handleDrawerTouchEnd = (e: TouchEvent) => {
   const deltaY = e.changedTouches[0].clientY - drawerTouchStartY;
   const elapsed = Date.now() - drawerTouchStartTime;
 
-  // 1. 侧滑关闭：从左往右滑动（横向位移 > 60px 且横向滑动大于纵向滑动）
-  const isSideSwipeRight = deltaX > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3;
-  // 2. 下滑关闭：向下滑动 > 80px
-  const isSwipeDown = deltaY > 80 && Math.abs(deltaY) > Math.abs(deltaX) * 1.3;
-
-  if (elapsed < 600 && (isSideSwipeRight || isSwipeDown)) {
-    closeMusicFull();
+  if (elapsed < 500) {
+    if (deltaX > 40 && deltaX > Math.abs(deltaY) * 1.1) {
+      hasTriggeredSwipe = true;
+      closeMusicFull();
+      return;
+    }
+    if (deltaY > 50 && deltaY > Math.abs(deltaX) * 1.1) {
+      hasTriggeredSwipe = true;
+      closeMusicFull();
+      return;
+    }
   }
 };
 

@@ -14,8 +14,10 @@
       @mousemove="handleMouseMove"
       @click="handleContainerClick"
       @dblclick="handleDoubleClick"
-      @touchstart="handleTouchStart"
+      @touchstart.passive="handleTouchStart"
+      @touchmove="handleTouchMove"
       @touchend="handleTouchEnd"
+      @touchcancel="handleTouchEnd"
     >
       <!-- Video Player -->
       <video
@@ -473,27 +475,61 @@ const handleClose = () => {
 let touchStartX = 0;
 let touchStartY = 0;
 let touchStartTime = 0;
+let hasTriggeredMvSwipe = false;
 
 const handleTouchStart = (e: TouchEvent) => {
   if (e.touches.length !== 1) return;
   touchStartX = e.touches[0].clientX;
   touchStartY = e.touches[0].clientY;
   touchStartTime = Date.now();
+  hasTriggeredMvSwipe = false;
+};
+
+const handleTouchMove = (e: TouchEvent) => {
+  if (hasTriggeredMvSwipe) return;
+  if (e.touches.length !== 1) return;
+  if (isDragging.value) return;
+
+  const currentX = e.touches[0].clientX;
+  const currentY = e.touches[0].clientY;
+  const deltaX = currentX - touchStartX;
+  const deltaY = currentY - touchStartY;
+
+  // 1. 侧滑返回：滑动过程中一旦向右滑动超过 50px 且横向位移大于纵向位移，立即退出 MV 播放
+  if (deltaX > 50 && deltaX > Math.abs(deltaY) * 1.1) {
+    hasTriggeredMvSwipe = true;
+    handleClose();
+    return;
+  }
+
+  // 2. 下滑关闭：在顶部区域向下滑动超过 70px
+  if (deltaY > 70 && deltaY > Math.abs(deltaX) * 1.1 && touchStartY < 220) {
+    hasTriggeredMvSwipe = true;
+    handleClose();
+    return;
+  }
 };
 
 const handleTouchEnd = (e: TouchEvent) => {
+  if (hasTriggeredMvSwipe) return;
   if (e.changedTouches.length !== 1) return;
+  if (isDragging.value) return;
+
   const deltaX = e.changedTouches[0].clientX - touchStartX;
   const deltaY = e.changedTouches[0].clientY - touchStartY;
   const elapsed = Date.now() - touchStartTime;
 
-  // 1. 侧滑返回：从左侧向右划动距离 > 60px，且横向位移明显大于纵向位移
-  const isHorizontalSwipe = deltaX > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3;
-  // 2. 下滑关闭：向下滑动 > 70px
-  const isVerticalSwipeDown = deltaY > 70 && Math.abs(deltaY) > Math.abs(deltaX) * 1.3 && touchStartY < 220;
-
-  if (elapsed < 600 && (isHorizontalSwipe || isVerticalSwipeDown)) {
-    handleClose();
+  if (elapsed < 500) {
+    if (deltaX > 40 && deltaX > Math.abs(deltaY) * 1.1) {
+      hasTriggeredMvSwipe = true;
+      handleClose();
+      return;
+    }
+    if (deltaY > 50 && deltaY > Math.abs(deltaX) * 1.1 && touchStartY < 250) {
+      hasTriggeredMvSwipe = true;
+      handleClose();
+      return;
+    }
   }
 };
 

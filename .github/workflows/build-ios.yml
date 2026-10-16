@@ -36,7 +36,7 @@ jobs:
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
 
-      - name: Build iOS Archive (Target: iOS 14.0)
+      - name: "Build iOS Archive (Target: iOS 14.0)"
         run: |
           xcodebuild archive \
             -project ios/AlgerMusicPlayer.xcodeproj \

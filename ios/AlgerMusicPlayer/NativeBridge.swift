@@ -38,6 +38,12 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         case "httpRequest":
             handleHttpRequest(payload: body)
 
+        case "openExternalUrl":
+            handleOpenExternalUrl(payload: body)
+
+        case "updateLyric":
+            handleUpdateLyric(payload: body)
+
         default:
             print("[NativeBridge] 未知操作类型: \(action)")
         }
@@ -187,5 +193,20 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
             }
         }
         task.resume()
+    }
+
+    private func handleOpenExternalUrl(payload: [String: Any]) {
+        guard let urlStr = payload["url"] as? String,
+              let url = URL(string: urlStr) else {
+            return
+        }
+        DispatchQueue.main.async {
+            UIApplication.shared.open(url, options: [:], completionHandler: nil)
+        }
+    }
+
+    private func handleUpdateLyric(payload: [String: Any]) {
+        guard let text = payload["text"] as? String else { return }
+        NowPlayingManager.shared.updateLyric(text: text)
     }
 }

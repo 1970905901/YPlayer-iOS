@@ -600,20 +600,20 @@ const getFocusStyle = (index: number) => {
   };
 };
 
-// 逐字歌词样式函数
+const staticNonActiveWordStyle = Object.freeze({
+  color: 'inherit',
+  backgroundImage: 'none',
+  WebkitTextFillColor: 'initial'
+});
+
+// 逐字歌词样式函数 (优化性能，仅对当前播放行进行渐变计算)
 const getWordStyle = (lineIndex: number, _wordIndex: number, word: any) => {
-  const colors = textColors.value || getTextColors();
-  // 如果不是当前行，返回普通样式
+  // 如果不是当前行，直接返回冻结的静态属性，防止每帧分配垃圾对象与频繁重绘
   if (lineIndex !== nowIndex.value) {
-    return {
-      color: colors.primary,
-      transition: 'color 0.3s ease',
-      // 重置背景相关属性
-      backgroundImage: 'none',
-      WebkitTextFillColor: 'initial'
-    };
+    return staticNonActiveWordStyle;
   }
 
+  const colors = textColors.value || getTextColors();
   // 当前行的逐字效果，应用歌词矫正时间
   const currentTime = (nowTime.value + correctionTime.value) * 1000; // 转换为毫秒，确保与word时间单位一致
 
@@ -1129,13 +1129,18 @@ defineExpose({
     @apply pointer-events-auto;
 
     .control-btn {
-      @apply opacity-0 transition-all duration-300;
-      pointer-events: none;
+      @apply opacity-35 transition-all duration-300;
+      pointer-events: auto !important;
+
+      &:active,
+      &:focus {
+        @apply opacity-100;
+      }
     }
 
     &:hover .control-btn {
       @apply opacity-100;
-      pointer-events: auto;
+      pointer-events: auto !important;
     }
   }
 

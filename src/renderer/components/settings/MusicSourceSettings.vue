@@ -406,11 +406,49 @@ const toggleSource = (sourceKey: string) => {
 };
 
 /**
+ * 移动端/Web 本地文件选取辅助函数
+ */
+const pickLocalFile = (accept: string): Promise<{ name: string; content: string } | null> => {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = accept;
+    input.style.display = 'none';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) {
+        resolve(null);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        resolve({
+          name: file.name,
+          content: reader.result as string
+        });
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsText(file);
+    };
+    document.body.appendChild(input);
+    input.click();
+    setTimeout(() => {
+      input.remove();
+    }, 60000);
+  });
+};
+
+/**
  * 导入自定义API插件
  */
 const importPlugin = async () => {
   try {
-    const result = await window.api.importCustomApiPlugin();
+    let result: { name?: string; content?: string } | null = null;
+    if (window.api?.importCustomApiPlugin) {
+      result = await window.api.importCustomApiPlugin();
+    } else {
+      result = await pickLocalFile('.json,.txt,.js');
+    }
     if (result && result.name && result.content) {
       settingsStore.setCustomApiPlugin(result);
       message.success(t('settings.playback.customApi.importSuccess', { name: result.name }));
@@ -430,7 +468,12 @@ const importPlugin = async () => {
  */
 const importLxMusicScript = async () => {
   try {
-    const result = await window.api.importLxMusicScript();
+    let result: { name?: string; content?: string } | null = null;
+    if (window.api?.importLxMusicScript) {
+      result = await window.api.importLxMusicScript();
+    } else {
+      result = await pickLocalFile('.js,.json,.txt');
+    }
     if (result && result.content) {
       await addLxMusicScript(result.content);
     }
@@ -576,13 +619,23 @@ const importLxMusicScriptFromUrl = async () => {
   isImportingFromUrl.value = true;
 
   try {
-    // 下载脚本内容
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    // 下载脚本内容 (优先使用原生 HTTP 隧道绕过 iOS WebKit 跨域限制)
+    let content = '';
+    try {
+      const { nativeHttpRequest } = await import('@/api/ncmDirect/nativeHttp');
+      const resp = await nativeHttpRequest({ url, method: 'GET', timeout: 15000 });
+      if (resp.status >= 200 && resp.status < 400 && resp.data) {
+        content = resp.data;
+      } else {
+        throw new Error(`HTTP ${resp.status}`);
+      }
+    } catch (_nativeErr) {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      content = await response.text();
     }
-
-    const content = await response.text();
 
     // 验证脚本格式 - 检查是否包含 lx-music 脚本的特征
     // 1. 检查是否有头部注释块（包含 @name、@version 等）

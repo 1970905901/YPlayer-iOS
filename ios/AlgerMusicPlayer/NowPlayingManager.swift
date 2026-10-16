@@ -51,6 +51,12 @@ final class NowPlayingManager {
             return .success
         }
 
+        // 显式禁用快进/快退指令，使 iOS 控制中心与锁屏展示上一首/下一首图标 (|<< / >>|)
+        commandCenter.skipForwardCommand.isEnabled = false
+        commandCenter.skipBackwardCommand.isEnabled = false
+        commandCenter.seekForwardCommand.isEnabled = false
+        commandCenter.seekBackwardCommand.isEnabled = false
+
         commandCenter.nextTrackCommand.isEnabled = true
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
             self?.dispatchRemoteCommand("nextTrack")
@@ -80,8 +86,35 @@ final class NowPlayingManager {
         }
     }
 
+    private var baseArtist: String = ""
+    private var baseTitle: String = ""
+    private var currentLyric: String = ""
+
+    /// 更新锁屏与控制中心单句歌词
+    func updateLyric(text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != currentLyric else { return }
+        currentLyric = trimmed
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            var info = self.currentInfo
+            if !self.baseArtist.isEmpty {
+                info[MPMediaItemPropertyArtist] = "\(trimmed) · \(self.baseArtist)"
+            } else {
+                info[MPMediaItemPropertyArtist] = trimmed
+            }
+            self.currentInfo = info
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        }
+    }
+
     /// 更新锁屏及控制中心播放信息
     func updateNowPlaying(info: PlaybackStateInfo) {
+        baseArtist = info.artist
+        baseTitle = info.title
+        currentLyric = ""
+
         var nowPlayingInfo = [String: Any]()
 
         nowPlayingInfo[MPMediaItemPropertyTitle] = info.title

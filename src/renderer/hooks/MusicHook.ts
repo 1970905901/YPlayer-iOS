@@ -3,6 +3,7 @@ import { computed, type ComputedRef, nextTick, onUnmounted, ref, watch } from 'v
 
 import useIndexedDB from '@/hooks/IndexDBHook';
 import { audioService } from '@/services/audioService';
+import { nativeBridge } from '@/services/nativeBridge';
 import type { usePlayerStore } from '@/store';
 import type { Artist, ILyricText, SongResult } from '@/types/music';
 import { isElectron } from '@/utils';
@@ -755,6 +756,19 @@ watch(
   (newLrcArray) => {
     if (newLrcArray.length > 0 && isElectron && isLyricWindowOpen.value) {
       sendLyricToWin();
+    }
+  }
+);
+
+// 监听当前歌词行索引变化，实时同步歌词至 iOS 原生锁屏与控制中心
+watch(
+  () => nowIndex.value,
+  (newIdx) => {
+    if (lrcArray.value && lrcArray.value[newIdx]) {
+      const text = lrcArray.value[newIdx].text || '';
+      if (text) {
+        nativeBridge.updateLyric(text);
+      }
     }
   }
 );

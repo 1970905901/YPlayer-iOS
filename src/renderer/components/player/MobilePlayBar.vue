@@ -128,16 +128,17 @@ watch(
 
 <style lang="scss" scoped>
 .mobile-play-bar {
-  @apply fixed bottom-[76px] left-0 w-full flex flex-col;
+  @apply fixed left-0 w-full flex flex-col;
+  bottom: calc(max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)) + 78px);
   z-index: 10000;
   animation-duration: 0.3s !important;
   transition: all 0.3s ease;
 
   &.is-menu-show {
-    bottom: calc(var(--safe-area-inset-bottom, 0) + 66px);
+    bottom: calc(max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)) + 78px);
   }
   &.is-menu-hide {
-    bottom: calc(var(--safe-area-inset-bottom, 0) + 10px);
+    bottom: calc(max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)) + 22px);
   }
 
   &.play-bar-expanded {

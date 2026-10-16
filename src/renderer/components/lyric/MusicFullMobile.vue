@@ -553,51 +553,49 @@ const closeFullLyrics = () => {
   }
 };
 
-// 滚动到当前歌词，添加错误处理和日志
+let scrollRafId: number | null = null;
+
+// 滚动到当前歌词，使用 requestAnimationFrame 节流防掉帧
 const scrollToCurrentLyric = (immediate = false, customScrollerRef?: HTMLElement | null) => {
-  try {
-    const scrollerRef = customScrollerRef || lyricsScrollerRef.value;
-    if (!scrollerRef) {
-      console.log('歌词容器引用不存在');
-      return;
-    }
-
-    if (!supportAutoScroll.value) {
-      console.log('歌词不支持自动滚动');
-      return;
-    }
-
-    // 如果用户正在手动滚动，不打断他们的操作
-    if (isTouchScrolling.value && !immediate) {
-      return;
-    }
-
-    const prefix = customScrollerRef ? 'landscape-' : '';
-    const activeEl = document.getElementById(`${prefix}lyric-line-${nowIndex.value}`);
-    if (!activeEl) {
-      console.log(`找不到当前歌词元素: ${prefix}lyric-line-${nowIndex.value}`);
-      return;
-    }
-
-    const containerRect = scrollerRef.getBoundingClientRect();
-    const lineRect = activeEl.getBoundingClientRect();
-
-    // 优化滚动位置计算，确保当前歌词在视图中央
-    const scrollTop =
-      scrollerRef.scrollTop +
-      (lineRect.top - containerRect.top) -
-      containerRect.height / 2 +
-      lineRect.height / 2;
-
-    console.log(`滚动到歌词 #${nowIndex.value}, 位置: ${scrollTop}px`);
-
-    scrollerRef.scrollTo({
-      top: scrollTop,
-      behavior: immediate ? 'auto' : 'smooth'
-    });
-  } catch (err) {
-    console.error('滚动歌词出错:', err);
+  if (scrollRafId) {
+    cancelAnimationFrame(scrollRafId);
   }
+  scrollRafId = requestAnimationFrame(() => {
+    try {
+      const scrollerRef = customScrollerRef || lyricsScrollerRef.value;
+      if (!scrollerRef || !supportAutoScroll.value) {
+        return;
+      }
+
+      // 如果用户正在手动滚动，不打断操作
+      if (isTouchScrolling.value && !immediate) {
+        return;
+      }
+
+      const prefix = customScrollerRef ? 'landscape-' : '';
+      const activeEl = document.getElementById(`${prefix}lyric-line-${nowIndex.value}`);
+      if (!activeEl) {
+        return;
+      }
+
+      const containerRect = scrollerRef.getBoundingClientRect();
+      const lineRect = activeEl.getBoundingClientRect();
+
+      // 优化滚动位置计算，确保当前歌词在视图中央
+      const scrollTop =
+        scrollerRef.scrollTop +
+        (lineRect.top - containerRect.top) -
+        containerRect.height / 2 +
+        lineRect.height / 2;
+
+      scrollerRef.scrollTo({
+        top: scrollTop,
+        behavior: immediate ? 'auto' : 'smooth'
+      });
+    } catch (err) {
+      console.error('滚动歌词出错:', err);
+    }
+  });
 };
 
 // 监听歌词变化，自动滚动
@@ -1129,29 +1127,25 @@ const getLrcStyle = (index: number) => {
   };
 };
 
-// 逐字歌词样式函数
+const staticNonActiveWordStyle = Object.freeze({
+  color: 'inherit',
+  backgroundImage: 'none',
+  WebkitTextFillColor: 'initial'
+});
+
+// 逐字歌词样式函数 (优化性能，仅对当前播放行进行毫秒级渐变计算)
 const getWordStyle = (lineIndex: number, _wordIndex: number, word: any) => {
-  const colors = textColors.value || getTextColors();
-  // 如果不是当前行，返回普通样式
+  // 如果不是当前行，直接返回冻结的静态属性，防止每帧对数百个单词分配垃圾对象与重绘
   if (lineIndex !== nowIndex.value) {
-    return {
-      color: colors.primary,
-      transition: 'color 0.3s ease',
-      // 重置背景相关属性
-      backgroundImage: 'none',
-      WebkitTextFillColor: 'initial'
-    };
+    return staticNonActiveWordStyle;
   }
 
-  // 当前行的逐字效果，应用歌词矫正时间
-  const currentTime = (nowTime.value + correctionTime.value) * 1000; // 转换为毫秒，确保与word时间单位一致
-
-  // 直接使用绝对时间比较
-  const wordStartTime = word.startTime; // 单词开始的绝对时间（毫秒）
+  const colors = textColors.value || getTextColors();
+  const currentTime = (nowTime.value + correctionTime.value) * 1000;
+  const wordStartTime = word.startTime;
   const wordEndTime = word.startTime + word.duration;
 
   if (currentTime >= wordStartTime && currentTime < wordEndTime) {
-    // 当前正在播放的单词 - 使用渐变进度效果
     const progress = Math.min((currentTime - wordStartTime) / word.duration, 1);
     const progressPercent = Math.round(progress * 100);
 
@@ -1160,22 +1154,17 @@ const getWordStyle = (lineIndex: number, _wordIndex: number, word: any) => {
       backgroundClip: 'text',
       WebkitBackgroundClip: 'text',
       WebkitTextFillColor: 'transparent',
-      textShadow: `0 0 8px ${colors.active}40`,
-      transition: 'all 0.1s ease'
+      textShadow: `0 0 8px ${colors.active}40`
     };
   } else if (currentTime >= wordEndTime) {
-    // 已经播放过的单词 - 纯色显示
     return {
       color: colors.active,
-      WebkitTextFillColor: 'initial',
-      transition: 'none'
+      WebkitTextFillColor: 'initial'
     };
   } else {
-    // 还未播放的单词 - 普通状态
     return {
       color: colors.primary,
-      WebkitTextFillColor: 'initial',
-      transition: 'none'
+      WebkitTextFillColor: 'initial'
     };
   }
 };
@@ -1737,7 +1726,8 @@ const getWordStyle = (lineIndex: number, _wordIndex: number, word: any) => {
 
 // 通用歌词样式
 .lyric-line {
-  @apply cursor-pointer transition-all duration-300 font-medium;
+  @apply cursor-pointer font-medium;
+  transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
   font-weight: 500;
   letter-spacing: var(--lyric-letter-spacing, 0);
   line-height: var(--lyric-line-height, 1.6);
@@ -1824,8 +1814,10 @@ const getWordStyle = (lineIndex: number, _wordIndex: number, word: any) => {
 
   .lyrics-scroller {
     @apply flex-1 overflow-y-auto px-4;
-    scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
+    will-change: scroll-position;
+    contain: content;
+    transform: translateZ(0);
     mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%);
     -webkit-mask-image: linear-gradient(
       to bottom,
@@ -1877,18 +1869,24 @@ const getWordStyle = (lineIndex: number, _wordIndex: number, word: any) => {
   }
 
   &.pure-mode {
-    background: transparent;
-    backdrop-filter: none;
+    background: rgba(142, 142, 142, 0.15);
+    backdrop-filter: blur(8px);
+    pointer-events: auto !important;
 
-    &:not(:hover) {
-      i {
-        opacity: 0;
-      }
+    i {
+      opacity: 0.5;
+      transition: opacity 0.2s ease;
+    }
+
+    &:active i,
+    &:hover i {
+      opacity: 1;
     }
   }
 
-  &:hover {
-    background: rgba(126, 121, 121, 0.2);
+  &:hover,
+  &:active {
+    background: rgba(126, 121, 121, 0.25);
     i {
       opacity: 1;
     }

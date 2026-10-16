@@ -105,6 +105,23 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
 
     // MARK: - WKNavigationDelegate
 
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.allow)
+            return
+        }
+
+        // 外部链接 (如 GitHub、第三方文档) 跳出至系统 Safari 打开
+        if let scheme = url.scheme?.lowercased(), (scheme == "http" || scheme == "https"),
+           url.host != "localhost" && url.host != "127.0.0.1" {
+            UIApplication.shared.open(url, options: [:], completionHandler: nil)
+            decisionHandler(.cancel)
+            return
+        }
+
+        decisionHandler(.allow)
+    }
+
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         print("[ViewController] 页面加载失败: \(error.localizedDescription)")
     }

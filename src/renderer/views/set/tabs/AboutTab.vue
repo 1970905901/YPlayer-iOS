@@ -30,7 +30,7 @@
 
     <setting-item
       :title="t('settings.about.author')"
-      :description="t('settings.about.authorDesc')"
+      description="Y"
       clickable
       @click="openAuthor"
     >
@@ -153,7 +153,15 @@ const openManualUpdatePage = async () => {
 };
 
 const openAuthor = () => {
-  window.open(setData.value.authorUrl);
+  const repoUrl = 'https://github.com/1970905901/YPlayer-iOS';
+  if ((window as any).webkit?.messageHandlers?.nativePlayer) {
+    (window as any).webkit.messageHandlers.nativePlayer.postMessage({
+      action: 'openExternalUrl',
+      url: repoUrl
+    });
+    return;
+  }
+  window.open(repoUrl, '_blank');
 };
 
 defineExpose({ checkForUpdates });

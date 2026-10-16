@@ -102,6 +102,14 @@ class NativeBridge {
   }
 
   /**
+   * 同步当前单句歌词到 iOS 原生锁屏副标题与控制中心
+   */
+  public updateLyric(text: string) {
+    if (!this.isIOS) return;
+    this.postMessage('updateLyric', { text });
+  }
+
+  /**
    * 处理来自 iOS 原生锁屏/AirPods/Apple Watch 的远程命令
    */
   private async dispatchRemoteCommand(command: string, arg?: any) {

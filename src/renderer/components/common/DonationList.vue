@@ -15,41 +15,22 @@
       </div>
     </div>
 
-    <!-- 支付方式卡片 -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10 max-w-3xl mx-auto">
-      <!-- 支付宝 -->
+    <!-- 赞助方式卡片 -->
+    <div class="flex justify-center mb-10 max-w-md mx-auto px-4">
       <div
-        class="pay-card group relative overflow-hidden rounded-2xl bg-[#00A0E9]/5 border border-[#00A0E9]/20 p-6 flex flex-col items-center transition-all hover:bg-[#00A0E9]/10 hover:shadow-lg hover:shadow-[#00A0E9]/10"
+        class="pay-card group relative overflow-hidden rounded-3xl bg-amber-500/5 dark:bg-amber-400/5 border border-amber-500/20 p-6 flex flex-col items-center transition-all hover:bg-amber-500/10 hover:shadow-xl hover:shadow-amber-500/10 w-full"
       >
         <div
-          class="absolute -right-4 -top-4 w-24 h-24 bg-[#00A0E9]/10 rounded-full blur-2xl group-hover:bg-[#00A0E9]/20 transition-colors"
+          class="absolute -right-4 -top-4 w-28 h-28 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/20 transition-colors"
         ></div>
         <img
-          :src="alipay"
-          alt="Alipay"
-          class="w-52 h-52 rounded-xl shadow-sm mb-4 group-hover:scale-105 transition-transform duration-300"
+          :src="sponsorImg"
+          alt="Sponsor Code"
+          class="w-64 h-64 rounded-2xl shadow-md mb-4 group-hover:scale-[1.02] transition-transform duration-300 object-contain bg-white p-2"
         />
-        <div class="flex items-center gap-2 text-[#00A0E9] font-bold text-lg">
-          <i class="ri-alipay-fill text-2xl"></i>
-          {{ t('common.alipay') }}
-        </div>
-      </div>
-
-      <!-- 微信支付 -->
-      <div
-        class="pay-card group relative overflow-hidden rounded-2xl bg-[#09BB07]/5 border border-[#09BB07]/20 p-6 flex flex-col items-center transition-all hover:bg-[#09BB07]/10 hover:shadow-lg hover:shadow-[#09BB07]/10"
-      >
-        <div
-          class="absolute -right-4 -top-4 w-24 h-24 bg-[#09BB07]/10 rounded-full blur-2xl group-hover:bg-[#09BB07]/20 transition-colors"
-        ></div>
-        <img
-          :src="wechat"
-          alt="WeChat"
-          class="w-52 h-52 rounded-xl shadow-sm mb-4 group-hover:scale-105 transition-transform duration-300"
-        />
-        <div class="flex items-center gap-2 text-[#09BB07] font-bold text-lg">
-          <i class="ri-wechat-pay-fill text-2xl"></i>
-          {{ t('common.wechat') }}
+        <div class="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-bold text-lg">
+          <i class="ri-heart-fill text-2xl text-amber-500"></i>
+          <span>给 sonder 赞赏 · 赞助码</span>
         </div>
       </div>
     </div>
@@ -137,9 +118,7 @@ import { computed, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'v
 import { useI18n } from 'vue-i18n';
 
 import type { Donor } from '@/api/donation';
-import { getDonationList } from '@/api/donation';
-import alipay from '@/assets/alipay.png';
-import wechat from '@/assets/wechat.png';
+import sponsorImg from '@/assets/sponsor.jpg';
 
 const { t } = useI18n();
 

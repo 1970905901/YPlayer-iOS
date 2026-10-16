@@ -18,7 +18,7 @@
     "dev:web": "vite dev",
     "build": "electron-vite build",
     "build:web": "vite build",
-    "build:ios": "vite build && node scripts/sync-ios.mjs",
+    "build:ios": "node scripts/generate-ncm-modules.mjs && vite build && node scripts/sync-ios.mjs",
     "postinstall": "electron-builder install-app-deps",
     "fix-sandbox": "node scripts/fix-sandbox.js",
     "build:unpack": "npm run build && electron-builder --dir",

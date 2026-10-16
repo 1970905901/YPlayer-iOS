@@ -35,6 +35,9 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         case "share":
             handleShare(payload: body)
 
+        case "httpRequest":
+            handleHttpRequest(payload: body)
+
         default:
             print("[NativeBridge] 未知操作类型: \(action)")
         }
@@ -134,5 +137,55 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
             }
             vc.present(activityVC, animated: true, completion: nil)
         }
+    }
+
+    private func handleHttpRequest(payload: [String: Any]) {
+        guard let reqId = payload["id"] as? String,
+              let urlStr = payload["url"] as? String,
+              let url = URL(string: urlStr) else {
+            return
+        }
+
+        let method = (payload["method"] as? String ?? "GET").uppercased()
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.timeoutInterval = 20.0
+
+        if let headers = payload["headers"] as? [String: String] {
+            for (headerKey, headerVal) in headers {
+                request.setValue(headerVal, forHTTPHeaderField: headerKey)
+            }
+        }
+
+        if let dataStr = payload["data"] as? String, !dataStr.isEmpty {
+            request.httpBody = dataStr.data(using: .utf8)
+        }
+
+        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? (error == nil ? 200 : 500)
+            let bodyString = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            let errorMsg = error?.localizedDescription
+
+            var responsePayload: [String: Any] = [
+                "id": reqId,
+                "status": statusCode,
+                "data": bodyString
+            ]
+            if let errorMsg = errorMsg {
+                responsePayload["error"] = errorMsg
+            }
+
+            guard let jsonData = try? JSONSerialization.data(withJSONObject: responsePayload),
+                  let jsonString = String(data: jsonData, encoding: .utf8) else {
+                return
+            }
+
+            DispatchQueue.main.async {
+                self?.viewController?.evaluateJavaScript(
+                    "if (window.__nativeHttpCallback) { window.__nativeHttpCallback(\(jsonString)); }"
+                )
+            }
+        }
+        task.resume()
     }
 }

@@ -131,4 +131,9 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             self.setNeedsStatusBarAppearanceUpdate()
         }
     }
+
+    /// 执行 JavaScript
+    func evaluateJavaScript(_ script: String, completionHandler: ((Any?, Error?) -> Void)? = nil) {
+        webView?.evaluateJavaScript(script, completionHandler: completionHandler)
+    }
 }

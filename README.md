@@ -36,11 +36,12 @@
   - 深度支持 AirPods / 耳机线控双击切换、播放、暂停与上一首/下一首。
 - 📳 **精细的原生触觉反馈 (Haptics)**：
   - 基于 Emil Kowalski 交互美学，在切歌、点赞、列表拖拽、音量调整处调用原生 `UIImpactFeedbackGenerator`（Light / Medium / Heavy / Soft / Rigid / Selection），带来指尖温润反馈。
-- ⚡ **无跨域本地协议桥接**：
-  - 自定义 `LocalSchemeHandler`，通过 `app://localhost/` 协议直接在内存中高效流式加载 Web 打包资源，彻底杜绝 iOS 14 WebKit 的 `file://` 沙盒跨域限制。
-  - 彻底重构 IndexDB 异步加载机制，解决旧版 Safari 14 不支持 top-level await 导致的白屏问题，完美向下兼容至 iOS 14.0。
-- 🛠 **自建与在线 API 自由切换**：
-  - 支持在设置中随时自定义第三方音乐解析 API 服务端地址，数据自由掌控。
+- ⚡ **免服务端直连网易云音乐 (零门槛开箱即用)**：
+  - **无需搭建任何 Node.js 后端服务器或局域网配对**！
+  - 客户端内置完整的 NetEase 原生加解密引擎（涵盖 weapi / eapi / linuxapi 370+ 个官方 API 模块），通过 Swift 原生网络通道（`URLSession`）绕过 WebKit 浏览器的跨域 CORS 拦截。
+  - 安装并启动后即可直接高速拉取官方每日推荐、热门歌手、歌单推荐、无损音频播放链接与逐字歌词，完全如同桌面端原生独立运作。
+- 🛠 **自定义音源与 API 自由切换**：
+  - 支持在设置页面中随时配置自定义 API 服务端地址或外部第三方音源插件，数据与音源完全自由掌控。
 
 ---
 

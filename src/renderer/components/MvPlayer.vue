@@ -14,6 +14,8 @@
       @mousemove="handleMouseMove"
       @click="handleContainerClick"
       @dblclick="handleDoubleClick"
+      @touchstart="handleTouchStart"
+      @touchend="handleTouchEnd"
     >
       <!-- Video Player -->
       <video
@@ -74,7 +76,7 @@
 
       <!-- Top Bar (Title & Close) -->
       <div
-        class="absolute top-0 left-0 right-0 p-4 z-[9999999] transition-all duration-300 bg-gradient-to-b from-black/80 to-transparent pointer-events-auto"
+        class="mv-top-bar absolute top-0 left-0 right-0 z-[9999999] transition-all duration-300 bg-gradient-to-b from-black/80 to-transparent pointer-events-auto"
         :class="{ '-translate-y-full opacity-0': !showControls }"
         style="-webkit-app-region: drag"
         @click.stop
@@ -467,6 +469,34 @@ const handleClose = () => {
   emit('update:show', false);
 };
 
+// 触摸手势控制：支持从左往右侧滑返回或向下滑动关闭 MV 播放器
+let touchStartX = 0;
+let touchStartY = 0;
+let touchStartTime = 0;
+
+const handleTouchStart = (e: TouchEvent) => {
+  if (e.touches.length !== 1) return;
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+  touchStartTime = Date.now();
+};
+
+const handleTouchEnd = (e: TouchEvent) => {
+  if (e.changedTouches.length !== 1) return;
+  const deltaX = e.changedTouches[0].clientX - touchStartX;
+  const deltaY = e.changedTouches[0].clientY - touchStartY;
+  const elapsed = Date.now() - touchStartTime;
+
+  // 1. 侧滑返回：从左侧向右划动距离 > 60px，且横向位移明显大于纵向位移
+  const isHorizontalSwipe = deltaX > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3;
+  // 2. 下滑关闭：向下滑动 > 70px
+  const isVerticalSwipeDown = deltaY > 70 && Math.abs(deltaY) > Math.abs(deltaX) * 1.3 && touchStartY < 220;
+
+  if (elapsed < 600 && (isHorizontalSwipe || isVerticalSwipeDown)) {
+    handleClose();
+  }
+};
+
 const loadMvUrl = async (mv: IMvItem) => {
   playLoading.value = true;
   autoPlayBlocked.value = false;
@@ -581,5 +611,13 @@ onUnmounted(() => {
 /* Hide cursor when needed */
 .cursor-none {
   cursor: none;
+}
+
+/* 顶部栏安全区域适配，避免刘海与灵动岛遮挡歌曲信息与关闭按钮 */
+.mv-top-bar {
+  padding-top: calc(max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)) + 14px) !important;
+  padding-left: calc(max(env(safe-area-inset-left, 0px), var(--safe-area-inset-left, 0px)) + 16px) !important;
+  padding-right: calc(max(env(safe-area-inset-right, 0px), var(--safe-area-inset-right, 0px)) + 16px) !important;
+  padding-bottom: 16px !important;
 }
 </style>

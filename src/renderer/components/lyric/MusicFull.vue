@@ -15,7 +15,13 @@
       class="background-layer"
       :style="backgroundImageStyle"
     ></div>
-    <div id="drawer-target" :class="[config.theme]" class="relative z-10">
+    <div
+      id="drawer-target"
+      :class="[config.theme]"
+      class="relative z-10"
+      @touchstart="handleDrawerTouchStart"
+      @touchend="handleDrawerTouchEnd"
+    >
       <!-- 左侧关闭按钮 -->
       <div
         class="control-left absolute top-8 left-8 z-[9999]"
@@ -713,6 +719,35 @@ const closeMusicFull = () => {
   }
   isVisible.value = false;
   playerStore.setMusicFull(false);
+};
+
+// 触摸手势控制：支持从左往右侧滑关闭或向下滑动关闭播放详情页
+let drawerTouchStartX = 0;
+let drawerTouchStartY = 0;
+let drawerTouchStartTime = 0;
+
+const handleDrawerTouchStart = (e: TouchEvent) => {
+  if (e.touches.length !== 1) return;
+  drawerTouchStartX = e.touches[0].clientX;
+  drawerTouchStartY = e.touches[0].clientY;
+  drawerTouchStartTime = Date.now();
+};
+
+const handleDrawerTouchEnd = (e: TouchEvent) => {
+  if (e.changedTouches.length !== 1) return;
+
+  const deltaX = e.changedTouches[0].clientX - drawerTouchStartX;
+  const deltaY = e.changedTouches[0].clientY - drawerTouchStartY;
+  const elapsed = Date.now() - drawerTouchStartTime;
+
+  // 1. 侧滑关闭：从左往右滑动（横向位移 > 60px 且横向位移大于纵向位移）
+  const isSideSwipeRight = deltaX > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3;
+  // 2. 下滑关闭：向下滑动 > 80px
+  const isSwipeDown = deltaY > 80 && Math.abs(deltaY) > Math.abs(deltaX) * 1.3;
+
+  if (elapsed < 600 && (isSideSwipeRight || isSwipeDown)) {
+    closeMusicFull();
+  }
 };
 
 // 全屏切换方法

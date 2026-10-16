@@ -767,7 +767,7 @@ watch(
     if (lrcArray.value && lrcArray.value[newIdx]) {
       const text = lrcArray.value[newIdx].text || '';
       if (text) {
-        nativeBridge.updateLyric(text);
+        audioService.updateCurrentLyric(text);
       }
     }
   }

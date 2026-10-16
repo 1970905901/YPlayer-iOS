@@ -126,13 +126,11 @@ class AudioService {
       }
     });
 
-    navigator.mediaSession.setActionHandler('seekbackward', (event) => {
-      this.seek(this.audio.currentTime - (event.seekOffset || 10));
-    });
-
-    navigator.mediaSession.setActionHandler('seekforward', (event) => {
-      this.seek(this.audio.currentTime + (event.seekOffset || 10));
-    });
+    // 显式将 seekbackward / seekforward 置空，防止 iOS WebKit 将控制中心强制替换为 15 秒快进快退
+    try {
+      navigator.mediaSession.setActionHandler('seekbackward', null);
+      navigator.mediaSession.setActionHandler('seekforward', null);
+    } catch (e) {}
 
     navigator.mediaSession.setActionHandler('previoustrack', () => {
       this.emit('previoustrack');
@@ -141,6 +139,30 @@ class AudioService {
     navigator.mediaSession.setActionHandler('nexttrack', () => {
       this.emit('nexttrack');
     });
+  }
+
+  private currentLyric: string = '';
+
+  /**
+   * 更新当前单句歌词到系统媒体中心与锁屏
+   */
+  public updateCurrentLyric(text: string) {
+    const trimmed = (text || '').trim();
+    if (!trimmed) return;
+    this.currentLyric = trimmed;
+
+    try {
+      if ('mediaSession' in navigator && navigator.mediaSession.metadata) {
+        const artists = this.currentTrack?.ar
+          ? this.currentTrack.ar.map((a: any) => a.name).join('/')
+          : (this.currentTrack as any)?.song?.artists?.map((a: any) => a.name).join('/') || '';
+        navigator.mediaSession.metadata.artist = artists ? `${trimmed} · ${artists}` : trimmed;
+      }
+    } catch (e) {}
+
+    try {
+      nativeBridge.updateLyric(trimmed);
+    } catch (e) {}
   }
 
   private updateMediaSessionMetadata(track: SongResult) {

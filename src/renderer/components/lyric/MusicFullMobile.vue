@@ -15,6 +15,8 @@
         { 'is-landscape': isLandscape },
         { 'is-dark': isDark }
       ]"
+      @touchstart="handleDrawerTouchStart"
+      @touchend="handleDrawerTouchEnd"
     >
       <!-- 顶部控制按钮 -->
       <div v-if="playMusic?.playLoading" class="loading-overlay">
@@ -1011,6 +1013,36 @@ const togglePlayMode = () => {
 const closeMusicFull = () => {
   isVisible.value = false;
   playerStore.setMusicFull(false);
+};
+
+// 触摸手势：支持侧滑关闭（从左往右划动）或下滑关闭播放页（无论是否开启纯净模式）
+let drawerTouchStartX = 0;
+let drawerTouchStartY = 0;
+let drawerTouchStartTime = 0;
+
+const handleDrawerTouchStart = (e: TouchEvent) => {
+  if (e.touches.length !== 1) return;
+  drawerTouchStartX = e.touches[0].clientX;
+  drawerTouchStartY = e.touches[0].clientY;
+  drawerTouchStartTime = Date.now();
+};
+
+const handleDrawerTouchEnd = (e: TouchEvent) => {
+  if (e.changedTouches.length !== 1) return;
+  if (isThumbDragging.value || isMouseDragging.value) return;
+
+  const deltaX = e.changedTouches[0].clientX - drawerTouchStartX;
+  const deltaY = e.changedTouches[0].clientY - drawerTouchStartY;
+  const elapsed = Date.now() - drawerTouchStartTime;
+
+  // 1. 侧滑关闭：从左往右滑动（横向位移 > 60px 且横向滑动大于纵向滑动）
+  const isSideSwipeRight = deltaX > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3;
+  // 2. 下滑关闭：向下滑动 > 80px
+  const isSwipeDown = deltaY > 80 && Math.abs(deltaY) > Math.abs(deltaX) * 1.3;
+
+  if (elapsed < 600 && (isSideSwipeRight || isSwipeDown)) {
+    closeMusicFull();
+  }
 };
 
 // 添加对 playMusic.id 的监听，歌曲切换时滚动到顶部

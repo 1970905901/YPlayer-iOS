@@ -194,7 +194,11 @@ const loadPlaylistCategory = async () => {
 };
 
 const handleTypeChange = (type: string) => {
+  if (type === currentType.value) return;
+  currentType.value = type;
+  listTitle.value = type === DEFAULT_CAT ? t('comp.pages.list.dailyRecommend') : type;
   router.replace({ query: { ...route.query, type } });
+  loadList(type);
 };
 
 onMounted(() => {

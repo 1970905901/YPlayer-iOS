@@ -217,7 +217,10 @@ const formatDate = (timestamp: number): string => {
 };
 
 const handleCategoryChange = (id: number) => {
+  if (id === currentCategoryId.value) return;
+  currentCategoryId.value = id;
   router.replace({ query: { ...route.query, category: id === -1 ? undefined : String(id) } });
+  loadData(id);
 };
 
 const loadCategoryRadios = async (id: number, loadMore = false) => {

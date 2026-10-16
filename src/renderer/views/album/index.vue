@@ -137,6 +137,8 @@ const currentAreaName = computed(
 );
 
 const handleAreaChange = (value: string) => {
+  if (value === currentArea.value) return;
+  currentArea.value = value;
   router.replace({ query: { area: value } });
   loadList(value);
 };

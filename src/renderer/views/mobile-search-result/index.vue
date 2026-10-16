@@ -350,12 +350,18 @@ onMounted(() => {
 }
 
 .type-tag {
-  @apply px-4 py-1.5 rounded-full text-sm whitespace-nowrap;
+  @apply px-4 py-1.5 rounded-full text-sm whitespace-nowrap cursor-pointer select-none;
   @apply bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300;
-  @apply transition-colors duration-200;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.15s ease, background-color 0.1s ease, color 0.1s ease;
+
+  &:active {
+    transform: scale(0.95);
+  }
 
   &.active {
-    @apply bg-green-500 text-white;
+    @apply bg-primary text-white shadow-sm;
   }
 }
 

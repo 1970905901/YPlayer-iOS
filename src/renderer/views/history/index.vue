@@ -26,11 +26,12 @@
           <div
             v-for="tab in ['songs', 'playlists', 'albums', 'podcasts']"
             :key="tab"
-            class="px-4 h-7 rounded-full text-xs font-medium cursor-pointer transition-all duration-300 flex items-center justify-center whitespace-nowrap"
+            style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+            class="px-4 h-7 rounded-full text-xs font-medium cursor-pointer select-none active:scale-95 transition-transform duration-150 flex items-center justify-center whitespace-nowrap"
             :class="
               currentCategory === tab
                 ? 'bg-white dark:bg-neutral-700 text-gray-900 dark:text-white shadow-sm'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                : 'text-gray-500 dark:text-gray-400'
             "
             @click="handleCategoryChange(tab as any)"
           >

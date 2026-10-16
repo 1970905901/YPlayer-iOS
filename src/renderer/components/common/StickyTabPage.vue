@@ -24,6 +24,7 @@
             :categories="categories"
             :label-key="labelKey"
             :value-key="valueKey"
+            @update:model-value="(val: any) => emit('update:modelValue', val)"
             @change="(val: any) => emit('change', val)"
           />
         </div>
@@ -60,6 +61,7 @@ withDefaults(
 );
 
 const emit = defineEmits<{
+  'update:modelValue': [value: any];
   change: [value: any];
   scroll: [e: any];
 }>();

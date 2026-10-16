@@ -24,11 +24,13 @@
               <button
                 v-for="type in searchTypeOptions"
                 :key="type.key"
-                class="px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap"
+                type="button"
+                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+                class="px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap select-none active:scale-95 transition-transform duration-150"
                 :class="
                   searchType === type.key
                     ? 'bg-primary text-white shadow-lg shadow-primary/25'
-                    : 'bg-neutral-100 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-800'
+                    : 'bg-neutral-100 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400'
                 "
                 @click="handleTypeChange(type.key)"
               >
@@ -447,6 +449,7 @@ const loadSearch = async (isLoadMore = false) => {
 };
 
 const handleTypeChange = (type: number) => {
+  if (type === searchStore.searchType) return;
   searchStore.searchType = type;
   router.replace({
     path: '/search-result',
@@ -455,6 +458,7 @@ const handleTypeChange = (type: number) => {
       type
     }
   });
+  loadSearch();
 };
 
 const handleScroll = (e: any) => {

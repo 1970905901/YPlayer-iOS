@@ -54,21 +54,13 @@ jobs:
           mkdir -p build-output/Payload
           cp -R build-output/AlgerMusicPlayer.xcarchive/Products/Applications/AlgerMusicPlayer.app build-output/Payload/
           cd build-output
-          zip -qr AlgerMusicPlayer-iOS14.ipa Payload
+          zip -qr YPlayer-iOS.ipa Payload
           cd ..
 
-      - name: Upload IPA Artifact
+      - name: Upload Unsigned IPA (iPhone & iPad)
         uses: actions/upload-artifact@v4
         with:
-          name: AlgerMusicPlayer-iOS14-IPA
-          path: build-output/AlgerMusicPlayer-iOS14.ipa
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload xcarchive Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: AlgerMusicPlayer-xcarchive
-          path: build-output/AlgerMusicPlayer.xcarchive
+          name: YPlayer-iOS-ipa
+          path: build-output/YPlayer-iOS.ipa
           if-no-files-found: error
           retention-days: 14

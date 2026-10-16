@@ -5,11 +5,20 @@
       <div class="header-back" @click="goBack">
         <i class="ri-arrow-left-s-line"></i>
       </div>
-      <div class="header-keyword">{{ keyword }}</div>
-      <div class="header-actions">
-        <div class="action-btn" @click="openSearch">
-          <i class="ri-search-line"></i>
-        </div>
+      <div class="search-input-wrapper">
+        <i class="ri-search-line search-icon"></i>
+        <input
+          ref="searchInputRef"
+          v-model="searchValue"
+          type="text"
+          class="search-input"
+          :placeholder="t('comp.searchBar.searchPlaceholder') || '搜索音乐、歌手、歌单'"
+          @keydown.enter="handleSearch"
+        />
+        <i v-if="searchValue" class="ri-close-circle-fill clear-icon" @click.stop="clearSearch"></i>
+      </div>
+      <div class="search-button" @click="handleSearch">
+        {{ t('common.search') }}
       </div>
     </div>
 
@@ -96,6 +105,50 @@ const hasSafeArea = inject('hasSafeArea', false);
 
 // 搜索关键词
 const keyword = ref((route.query.keyword as string) || '');
+const searchValue = ref((route.query.keyword as string) || '');
+const searchInputRef = ref<HTMLInputElement | null>(null);
+
+const HISTORY_KEY = 'mobile_search_history';
+
+// 保存搜索历史
+const saveSearchHistory = (kw: string) => {
+  if (!kw.trim()) return;
+  try {
+    const historyStr = localStorage.getItem(HISTORY_KEY);
+    const history: string[] = historyStr ? JSON.parse(historyStr) : [];
+    const filtered = history.filter((item) => item !== kw);
+    filtered.unshift(kw);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(filtered.slice(0, 20)));
+  } catch (e) {
+    console.error('保存搜索历史失败:', e);
+  }
+};
+
+// 执行新搜索
+const handleSearch = () => {
+  const kw = searchValue.value.trim();
+  if (!kw) return;
+  searchInputRef.value?.blur();
+  saveSearchHistory(kw);
+  if (kw === keyword.value) {
+    performSearch();
+  } else {
+    keyword.value = kw;
+    router.replace({
+      query: {
+        ...route.query,
+        keyword: kw
+      }
+    });
+    performSearch();
+  }
+};
+
+// 清除输入内容
+const clearSearch = () => {
+  searchValue.value = '';
+  searchInputRef.value?.focus();
+};
 
 // 搜索类型
 const searchType = ref(Number(route.query.type) || searchStore.searchType || 1);
@@ -287,6 +340,7 @@ watch(
   (query) => {
     if (route.path === '/mobile-search-result' && query.keyword) {
       keyword.value = query.keyword as string;
+      searchValue.value = query.keyword as string;
       searchType.value = Number(query.type) || searchStore.searchType || 1;
       performSearch();
     }
@@ -308,8 +362,9 @@ onMounted(() => {
 }
 
 .result-header {
-  @apply flex items-center gap-3 px-4 py-3;
+  @apply flex items-center gap-3 pl-1 pr-3 py-3;
   @apply border-b border-gray-100 dark:border-gray-800;
+  touch-action: manipulation;
 
   &.safe-area-top {
     padding-top: calc(var(--safe-area-inset-top, 0px) + 12px);
@@ -318,26 +373,50 @@ onMounted(() => {
 
 .header-back {
   @apply flex items-center justify-center;
-  @apply w-10 h-10 rounded-full text-xl;
+  @apply w-8 h-8 rounded-full text-2xl cursor-pointer select-none;
   @apply text-gray-600 dark:text-gray-300;
   @apply active:bg-gray-100 dark:active:bg-gray-800;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.header-keyword {
-  @apply flex-1 text-base font-medium;
-  @apply text-gray-900 dark:text-white;
-  @apply truncate;
+.search-input-wrapper {
+  @apply flex-1 flex items-center gap-2;
+  @apply bg-gray-100 dark:bg-gray-800 rounded-full;
+  @apply px-4 py-1;
+  touch-action: manipulation;
 }
 
-.header-actions {
-  @apply flex items-center gap-2;
+.search-icon {
+  @apply text-gray-400 text-lg;
 }
 
-.action-btn {
-  @apply flex items-center justify-center;
-  @apply w-10 h-10 rounded-full text-xl;
-  @apply text-gray-600 dark:text-gray-300;
-  @apply active:bg-gray-100 dark:active:bg-gray-800;
+.search-input {
+  @apply flex-1 bg-transparent border-none outline-none;
+  @apply text-gray-900 dark:text-white text-base;
+  touch-action: manipulation;
+  -webkit-user-select: auto;
+
+  &::placeholder {
+    @apply text-gray-400;
+  }
+}
+
+.clear-icon {
+  @apply text-gray-400 text-lg cursor-pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.search-button {
+  @apply text-primary font-medium text-base cursor-pointer select-none;
+  @apply px-2 py-1;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+
+  &:active {
+    @apply opacity-80;
+  }
 }
 
 .search-types {

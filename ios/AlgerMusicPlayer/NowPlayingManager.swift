@@ -107,8 +107,8 @@ final class NowPlayingManager {
     private var baseTitle: String = ""
     private var currentLyric: String = ""
 
-    /// 更新锁屏与控制中心单句歌词（单独占据第二行，不拼接歌手名）
-    func updateLyric(text: String) {
+    /// 更新锁屏、控制中心与灵动岛实时单句歌词及同步播放进度
+    func updateLyric(text: String, currentTime: Double? = nil, duration: Double? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         currentLyric = trimmed
@@ -117,6 +117,14 @@ final class NowPlayingManager {
             guard let self = self else { return }
             var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? self.currentInfo
             info[MPMediaItemPropertyArtist] = trimmed
+            if let currentTime = currentTime, currentTime >= 0 {
+                info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
+            }
+            if let duration = duration, duration > 0 {
+                info[MPMediaItemPropertyPlaybackDuration] = duration
+            }
+            info[MPNowPlayingInfoPropertyPlaybackRate] = 1.0
+            info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
             self.currentInfo = info
             MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         }
@@ -174,8 +182,10 @@ final class NowPlayingManager {
 
             DispatchQueue.main.async {
                 if self.currentArtworkUrl == urlString {
-                    self.currentInfo[MPMediaItemPropertyArtwork] = artwork
-                    MPNowPlayingInfoCenter.default().nowPlayingInfo = self.currentInfo
+                    var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? self.currentInfo
+                    info[MPMediaItemPropertyArtwork] = artwork
+                    self.currentInfo = info
+                    MPNowPlayingInfoCenter.default().nowPlayingInfo = info
                 }
             }
         }.resume()

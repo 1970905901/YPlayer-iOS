@@ -207,6 +207,8 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
 
     private func handleUpdateLyric(payload: [String: Any]) {
         guard let text = payload["text"] as? String else { return }
-        NowPlayingManager.shared.updateLyric(text: text)
+        let currentTime = payload["currentTime"] as? Double
+        let duration = payload["duration"] as? Double
+        NowPlayingManager.shared.updateLyric(text: text, currentTime: currentTime, duration: duration)
     }
 }

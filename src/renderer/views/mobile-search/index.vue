@@ -264,6 +264,7 @@ onMounted(() => {
 .search-header {
   @apply flex items-center gap-3 pl-1 pr-3 py-3;
   @apply border-b border-gray-100 dark:border-gray-800;
+  touch-action: manipulation;
 
   &.safe-area-top {
     padding-top: calc(var(--safe-area-inset-top, 0px) + 12px);
@@ -272,15 +273,18 @@ onMounted(() => {
 
 .header-back {
   @apply flex items-center justify-center;
-  @apply w-8 h-8 rounded-full text-2xl;
+  @apply w-8 h-8 rounded-full text-2xl cursor-pointer select-none;
   @apply text-gray-600 dark:text-gray-300;
   @apply active:bg-gray-100 dark:active:bg-gray-800;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .search-input-wrapper {
   @apply flex-1 flex items-center gap-2;
   @apply bg-gray-100 dark:bg-gray-800 rounded-full;
   @apply px-4 py-1;
+  touch-action: manipulation;
 }
 
 .search-icon {
@@ -290,6 +294,7 @@ onMounted(() => {
 .search-input {
   @apply flex-1 bg-transparent border-none outline-none;
   @apply text-gray-900 dark:text-white text-base;
+  touch-action: manipulation;
 
   &::placeholder {
     @apply text-gray-400;
@@ -298,6 +303,19 @@ onMounted(() => {
 
 .clear-icon {
   @apply text-gray-400 text-lg cursor-pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.search-button {
+  @apply text-primary font-medium text-base cursor-pointer select-none;
+  @apply px-2 py-1;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+
+  &:active {
+    @apply opacity-80;
+  }
 }
 
 .search-types {

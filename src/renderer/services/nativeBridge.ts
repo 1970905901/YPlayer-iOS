@@ -102,11 +102,11 @@ class NativeBridge {
   }
 
   /**
-   * 同步当前单句歌词到 iOS 原生锁屏副标题与控制中心
+   * 同步当前单句歌词到 iOS 原生锁屏、控制中心与灵动岛
    */
-  public updateLyric(text: string) {
+  public updateLyric(text: string, currentTime?: number, duration?: number) {
     if (!this.isIOS) return;
-    this.postMessage('updateLyric', { text });
+    this.postMessage('updateLyric', { text, currentTime, duration });
   }
 
   /**

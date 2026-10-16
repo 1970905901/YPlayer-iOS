@@ -1,3 +1,11 @@
+html,
+body,
+#app {
+  /* 彻底禁用双击缩放手势，保持移动端原生应用质感 */
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   /* background-color: #000; */
   overflow: hidden;

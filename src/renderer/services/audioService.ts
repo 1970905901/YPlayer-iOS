@@ -159,7 +159,9 @@ class AudioService {
     } catch (e) {}
 
     try {
-      nativeBridge.updateLyric(trimmed);
+      const curTime = isFinite(this.audio?.currentTime) ? this.audio.currentTime : 0;
+      const duration = isFinite(this.audio?.duration) ? this.audio.duration : 0;
+      nativeBridge.updateLyric(trimmed, curTime, duration);
     } catch (e) {}
   }
 

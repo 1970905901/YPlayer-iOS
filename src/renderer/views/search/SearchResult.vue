@@ -508,6 +508,7 @@ watch(
 <style lang="scss" scoped>
 .search-result-page {
   position: relative;
+  touch-action: manipulation;
 }
 
 .animate-item {

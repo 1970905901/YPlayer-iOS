@@ -598,6 +598,7 @@ onMounted(() => {
 
 /* ── Search wrap ─────────────────────────────────────── */
 .search-wrap {
+  touch-action: manipulation;
   transition:
     flex 0.3s cubic-bezier(0.4, 0, 0.2, 1),
     max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -612,6 +613,7 @@ onMounted(() => {
 }
 
 .search-inner {
+  touch-action: manipulation;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -650,6 +652,7 @@ onMounted(() => {
 }
 
 .search-input {
+  touch-action: manipulation;
   flex: 1;
   min-width: 0;
   border: none;

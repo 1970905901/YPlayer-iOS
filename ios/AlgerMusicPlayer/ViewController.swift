@@ -62,6 +62,10 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         // 允许页面贯通至状态栏与刘海/灵动岛底部 (符合 mobile-native 的 viewport-fit=cover 规则)
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.bounces = false
+        // 彻底禁止缩放手势，杜绝双击放大页面
+        webView.scrollView.maximumZoomScale = 1.0
+        webView.scrollView.minimumZoomScale = 1.0
+        webView.scrollView.bouncesZoom = false
 
         view.addSubview(webView)
 

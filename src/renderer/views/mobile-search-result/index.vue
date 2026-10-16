@@ -329,11 +329,6 @@ const goBack = () => {
   router.back();
 };
 
-// 打开搜索
-const openSearch = () => {
-  router.push('/mobile-search');
-};
-
 // 监听路由变化
 watch(
   () => route.query,
@@ -433,7 +428,10 @@ onMounted(() => {
   @apply bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
-  transition: transform 0.15s ease, background-color 0.1s ease, color 0.1s ease;
+  transition:
+    transform 0.15s ease,
+    background-color 0.1s ease,
+    color 0.1s ease;
 
   &:active {
     transform: scale(0.95);

@@ -2,7 +2,6 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
 import { logout } from '@/api/login';
-import { getLikedList } from '@/api/music';
 import { getUserAlbumSublist, getUserPlaylist } from '@/api/user';
 import type { IUserDetail } from '@/types/user';
 import { clearLoginStatus } from '@/utils/auth';

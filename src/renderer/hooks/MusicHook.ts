@@ -3,7 +3,6 @@ import { computed, type ComputedRef, nextTick, onUnmounted, ref, watch } from 'v
 
 import useIndexedDB from '@/hooks/IndexDBHook';
 import { audioService } from '@/services/audioService';
-import { nativeBridge } from '@/services/nativeBridge';
 import type { usePlayerStore } from '@/store';
 import type { Artist, ILyricText, SongResult } from '@/types/music';
 import { isElectron } from '@/utils';

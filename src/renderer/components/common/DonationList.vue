@@ -117,7 +117,7 @@
 import { computed, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import type { Donor } from '@/api/donation';
+import { type Donor, getDonationList } from '@/api/donation';
 import sponsorImg from '@/assets/sponsor.jpg';
 
 const { t } = useI18n();

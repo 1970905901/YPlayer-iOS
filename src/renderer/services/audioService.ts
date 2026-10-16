@@ -1,7 +1,7 @@
 import { nativeBridge } from '@/services/nativeBridge';
 import type { AudioOutputDevice } from '@/types/audio';
 import type { SongResult } from '@/types/music';
-import { getImgUrl, getTrackCoverUrl, isElectron } from '@/utils';
+import { getTrackCoverUrl, isElectron } from '@/utils';
 
 class AudioService {
   private audio: HTMLAudioElement;
@@ -130,7 +130,9 @@ class AudioService {
     try {
       navigator.mediaSession.setActionHandler('seekbackward', null);
       navigator.mediaSession.setActionHandler('seekforward', null);
-    } catch (e) {}
+    } catch {
+      // ignore
+    }
 
     navigator.mediaSession.setActionHandler('previoustrack', () => {
       this.emit('previoustrack');
@@ -156,13 +158,17 @@ class AudioService {
         // 歌词单独展示在副标题位置，不添加歌手名（歌手名已合并至标题行，保持同字号、同粗细、同颜色）
         navigator.mediaSession.metadata.artist = trimmed;
       }
-    } catch (e) {}
+    } catch {
+      // ignore
+    }
 
     try {
       const curTime = isFinite(this.audio?.currentTime) ? this.audio.currentTime : 0;
       const duration = isFinite(this.audio?.duration) ? this.audio.duration : 0;
       nativeBridge.updateLyric(trimmed, curTime, duration);
-    } catch (e) {}
+    } catch {
+      // ignore
+    }
   }
 
   private updateMediaSessionMetadata(track: SongResult) {
@@ -202,7 +208,9 @@ class AudioService {
         navigator.mediaSession.setActionHandler('nexttrack', () => {
           this.emit('nexttrack');
         });
-      } catch (e) {}
+      } catch {
+        // ignore
+      }
 
       this.syncNativePlayState(!this.audio.paused);
     } catch (error) {
@@ -247,8 +255,8 @@ class AudioService {
       const album = this.currentTrack.al
         ? this.currentTrack.al.name
         : (this.currentTrack as any).song?.album?.name;
-      // 传递 1200x1200HD 超清封面图片，点击锁屏封面放大后不再模糊
-      const picUrl = getTrackCoverUrl(this.currentTrack, '1200y1200');
+      // 传递无压缩原图 Master 超清封面图片，点击锁屏封面放大后极致清晰
+      const picUrl = getTrackCoverUrl(this.currentTrack, '');
 
       nativeBridge.updatePlayState({
         isPlaying: isPlaying !== undefined ? isPlaying : !this.audio.paused,

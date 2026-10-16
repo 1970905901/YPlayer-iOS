@@ -67,7 +67,7 @@
     <!-- 操作插槽 -->
     <template #operating>
       <div class="song-item-operating-list">
-        <div v-if="favorite" class="song-item-operating-list-like" @click.stop="onToggleFavorite">
+        <div v-if="favorite" class="song-item-operating-list-like">
           <i
             class="iconfont icon-likefill"
             :class="{ 'like-active': isFavorite }"

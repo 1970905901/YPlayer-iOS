@@ -33,18 +33,17 @@ export const useFavoriteStore = defineStore('favorite', () => {
     );
 
     if (!isAlreadyInList) {
-      favoriteList.value.unshift(id);
+      favoriteList.value.push(id);
       setLocalStorageItem('favoriteList', favoriteList.value);
     }
 
     // 只要是有效网易云歌曲ID且用户已登录有token，就调用网易云云端收藏API
     const numericId = typeof id === 'number' ? id : parseInt(String(id), 10);
     if (!isNaN(numericId) && numericId > 0 && !String(id).includes('--')) {
-      const token = localStorage.getItem('token');
       const { useUserStore } = await import('./user');
       const userStore = useUserStore();
 
-      if (userStore.user && token) {
+      if (userStore.user && (hasPermission(true) || !!localStorage.getItem('token'))) {
         try {
           const res = await likeSong(numericId, true);
           if (res.data?.code !== 200 && res.data?.code !== undefined) {
@@ -79,11 +78,10 @@ export const useFavoriteStore = defineStore('favorite', () => {
       // 只要是有效网易云歌曲ID且用户已登录有token，就调用网易云云端取消收藏API
       const numericId = typeof id === 'number' ? id : parseInt(String(id), 10);
       if (!isNaN(numericId) && numericId > 0 && !String(id).includes('--')) {
-        const token = localStorage.getItem('token');
         const { useUserStore } = await import('./user');
         const userStore = useUserStore();
 
-        if (userStore.user && token) {
+        if (userStore.user && (hasPermission(true) || !!localStorage.getItem('token'))) {
           try {
             const res = await likeSong(numericId, false);
             if (res.data?.code !== 200 && res.data?.code !== undefined) {
@@ -124,7 +122,9 @@ export const useFavoriteStore = defineStore('favorite', () => {
     const { useUserStore } = await import('./user');
     const userStore = useUserStore();
     const localFavoriteList = localStorage.getItem('favoriteList');
-    const localList: Array<number | string> = localFavoriteList ? JSON.parse(localFavoriteList) : [];
+    const localList: Array<number | string> = localFavoriteList
+      ? JSON.parse(localFavoriteList)
+      : [];
 
     let synced = false;
 
@@ -151,17 +151,18 @@ export const useFavoriteStore = defineStore('favorite', () => {
       if (!synced) {
         try {
           const { getUserPlaylist } = await import('@/api/user');
-          const { getPlayListDetail } = await import('@/api/music');
+          const { getPlaylistDetail } = await import('@/api/music');
           const playlistRes = await getUserPlaylist(userStore.user.userId, 50, 0);
           const playlists = playlistRes.data?.playlist || [];
-          const favPlaylist =
-            playlists.find((p: any) => p.specialType === 5) || playlists[0];
+          const favPlaylist = playlists.find((p: any) => p.specialType === 5) || playlists[0];
           if (favPlaylist?.id) {
-            const detailRes = await getPlayListDetail(favPlaylist.id);
+            const detailRes = await getPlaylistDetail(favPlaylist.id);
             const trackIds = detailRes.data?.playlist?.trackIds;
             if (Array.isArray(trackIds) && trackIds.length > 0) {
               const serverList: number[] = trackIds.map((t: any) => t.id);
-              const filteredServer = serverList.filter((id) => !recentlyRemoved.value.has(String(id)));
+              const filteredServer = serverList.filter(
+                (id) => !recentlyRemoved.value.has(String(id))
+              );
               const serverSet = new Set(filteredServer.map(String));
               const localOnly = localList.filter(
                 (id) => !recentlyRemoved.value.has(String(id)) && !serverSet.has(String(id))

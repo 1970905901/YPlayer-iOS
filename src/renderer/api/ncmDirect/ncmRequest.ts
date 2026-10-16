@@ -1,5 +1,6 @@
 // @ts-nocheck
 import CryptoJS from 'crypto-js';
+
 import * as encrypt from './crypto';
 import { nativeHttpRequest } from './nativeHttp';
 
@@ -7,8 +8,10 @@ const DOMAIN = 'https://music.163.com';
 const API_DOMAIN = 'https://interface.music.163.com';
 
 const userAgentMap = {
-  weapi: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0',
-  linuxapi: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36',
+  weapi:
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0',
+  linuxapi:
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36',
   api: 'NeteaseMusic 9.0.90/5038 (iPhone; iOS 16.2; zh_CN)'
 };
 
@@ -22,7 +25,9 @@ const WNMCID = (() => {
 })();
 
 const generateRequestId = () => {
-  return `${Date.now()}_${Math.floor(Math.random() * 1000).toString().padStart(4, '0')}`;
+  return `${Date.now()}_${Math.floor(Math.random() * 1000)
+    .toString()
+    .padStart(4, '0')}`;
 };
 
 const cookieObjToString = (cookie: Record<string, string>) => {
@@ -34,12 +39,20 @@ const cookieObjToString = (cookie: Record<string, string>) => {
 const cookieToJson = (cookie: string) => {
   if (!cookie) return {};
   const res: Record<string, string> = {};
+  if (!cookie.includes('=')) {
+    res['MUSIC_U'] = cookie.trim();
+    return res;
+  }
   cookie.split(';').forEach((pair) => {
     const idx = pair.indexOf('=');
     if (idx > -1) {
       const k = pair.slice(0, idx).trim();
       const v = pair.slice(idx + 1).trim();
-      res[k] = decodeURIComponent(v);
+      try {
+        res[k] = decodeURIComponent(v);
+      } catch {
+        res[k] = v;
+      }
     }
   });
   return res;
@@ -168,7 +181,7 @@ export const ncmRequest = async (uri: string, data: any = {}, options: any = {})
   let parsedBody: any = null;
   try {
     parsedBody = JSON.parse(response.data);
-  } catch (_e) {
+  } catch {
     parsedBody = response.data;
   }
 

@@ -29,45 +29,11 @@ final class NowPlayingManager {
         setupRemoteCommands()
     }
 
-    /// 设置 MPRemoteCommandCenter 锁屏控制命令
+    /// 设置 MPRemoteCommandCenter 锁屏与灵动岛控制命令
     private func setupRemoteCommands() {
         let commandCenter = MPRemoteCommandCenter.shared()
 
-        commandCenter.playCommand.isEnabled = true
-        commandCenter.playCommand.addTarget { [weak self] _ in
-            self?.dispatchRemoteCommand("play")
-            return .success
-        }
-
-        commandCenter.pauseCommand.isEnabled = true
-        commandCenter.pauseCommand.addTarget { [weak self] _ in
-            self?.dispatchRemoteCommand("pause")
-            return .success
-        }
-
-        commandCenter.togglePlayPauseCommand.isEnabled = true
-        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
-            self?.dispatchRemoteCommand("togglePlayPause")
-            return .success
-        }
-
-        commandCenter.changePlaybackPositionCommand.isEnabled = true
-        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
-            if let positionEvent = event as? MPChangePlaybackPositionCommandEvent {
-                self?.dispatchRemoteCommand("changePlaybackPosition", arg: positionEvent.positionTime)
-                return .success
-            }
-            return .commandFailed
-        }
-
-        enforceRemoteCommands()
-    }
-
-    /// 强制校准控制中心按钮：彻底禁用 15 秒快进快退，强力启用上一首/下一首/播放/暂停按钮，杜绝控制中心与灵动岛灰色不可点
-    private func enforceRemoteCommands() {
-        let commandCenter = MPRemoteCommandCenter.shared()
-
-        // 彻底停用快进/快退区间指令 (15s)，清空首选间隔
+        // 彻底停用快进/快退区间指令 (15s)
         commandCenter.skipForwardCommand.removeTarget(nil)
         commandCenter.skipBackwardCommand.removeTarget(nil)
         commandCenter.skipForwardCommand.preferredIntervals = []
@@ -80,7 +46,7 @@ final class NowPlayingManager {
         commandCenter.seekForwardCommand.isEnabled = false
         commandCenter.seekBackwardCommand.isEnabled = false
 
-        // 强力启用上一首与下一首指令并挂载原生事件
+        // 启用上一首
         commandCenter.previousTrackCommand.removeTarget(nil)
         commandCenter.previousTrackCommand.isEnabled = true
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
@@ -88,6 +54,7 @@ final class NowPlayingManager {
             return .success
         }
 
+        // 启用下一首
         commandCenter.nextTrackCommand.removeTarget(nil)
         commandCenter.nextTrackCommand.isEnabled = true
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
@@ -95,7 +62,7 @@ final class NowPlayingManager {
             return .success
         }
 
-        // 强力启用播放、暂停与播放暂停切换指令并挂载原生事件，杜绝控制中心与灵动岛灰色不可点
+        // 启用播放指令
         commandCenter.playCommand.removeTarget(nil)
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { [weak self] _ in
@@ -103,6 +70,7 @@ final class NowPlayingManager {
             return .success
         }
 
+        // 启用暂停指令
         commandCenter.pauseCommand.removeTarget(nil)
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.addTarget { [weak self] _ in
@@ -110,12 +78,45 @@ final class NowPlayingManager {
             return .success
         }
 
+        // 启用播放/暂停切换指令（线控/耳机按键支持）
         commandCenter.togglePlayPauseCommand.removeTarget(nil)
         commandCenter.togglePlayPauseCommand.isEnabled = true
         commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
             self?.dispatchRemoteCommand("togglePlayPause")
             return .success
         }
+
+        // 启用播放进度拖动指令
+        commandCenter.changePlaybackPositionCommand.removeTarget(nil)
+        commandCenter.changePlaybackPositionCommand.isEnabled = true
+        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
+            if let positionEvent = event as? MPChangePlaybackPositionCommandEvent {
+                self?.dispatchRemoteCommand("changePlaybackPosition", arg: positionEvent.positionTime)
+                return .success
+            }
+            return .commandFailed
+        }
+
+        enforceRemoteCommands()
+    }
+
+    /// 强制校准控制中心按钮状态：彻底禁用 15 秒快进快退，确保上一首/下一首/播放/暂停始终处于可用状态
+    private func enforceRemoteCommands() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+
+        commandCenter.skipForwardCommand.preferredIntervals = []
+        commandCenter.skipBackwardCommand.preferredIntervals = []
+        commandCenter.skipForwardCommand.isEnabled = false
+        commandCenter.skipBackwardCommand.isEnabled = false
+        commandCenter.seekForwardCommand.isEnabled = false
+        commandCenter.seekBackwardCommand.isEnabled = false
+
+        commandCenter.previousTrackCommand.isEnabled = true
+        commandCenter.nextTrackCommand.isEnabled = true
+        commandCenter.playCommand.isEnabled = true
+        commandCenter.pauseCommand.isEnabled = true
+        commandCenter.togglePlayPauseCommand.isEnabled = true
+        commandCenter.changePlaybackPositionCommand.isEnabled = true
     }
 
     /// 向前端分发远程事件
@@ -210,7 +211,9 @@ final class NowPlayingManager {
                 return
             }
 
-            let boundsSize = CGSize(width: max(image.size.width, 1024), height: max(image.size.height, 1024))
+            let pixelWidth = max(image.size.width * (image.scale > 0 ? image.scale : 1.0), 1400)
+            let pixelHeight = max(image.size.height * (image.scale > 0 ? image.scale : 1.0), 1400)
+            let boundsSize = CGSize(width: pixelWidth, height: pixelHeight)
             let artwork = MPMediaItemArtwork(boundsSize: boundsSize) { _ in image }
             self.cachedArtwork = artwork
 

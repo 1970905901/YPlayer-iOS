@@ -77,7 +77,6 @@
           v-if="favorite"
           class="song-item-operating-like"
           :class="{ 'opacity-0': !isHovering && !isFavorite }"
-          @click.stop="onToggleFavorite"
         >
           <i
             class="iconfont icon-likefill"

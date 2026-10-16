@@ -450,7 +450,7 @@ const importPlugin = async () => {
       result = await pickLocalFile('.json,.txt,.js');
     }
     if (result && result.name && result.content) {
-      settingsStore.setCustomApiPlugin(result);
+      settingsStore.setCustomApiPlugin({ name: result.name, content: result.content });
       message.success(t('settings.playback.customApi.importSuccess', { name: result.name }));
 
       // 导入成功后自动勾选
@@ -629,7 +629,7 @@ const importLxMusicScriptFromUrl = async () => {
       } else {
         throw new Error(`HTTP ${resp.status}`);
       }
-    } catch (_nativeErr) {
+    } catch {
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);

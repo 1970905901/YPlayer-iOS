@@ -3,13 +3,16 @@
     <setting-item
       v-if="!isElectron"
       title="API 服务地址"
-      description="配置网易云音乐 API 服务端地址 (例如 http://192.168.1.100:30488)"
+      description="配置网易云音乐 API 服务端地址 (支持同一局域网电脑 IP 如 http://192.168.1.100:30488 或自建在线 API)"
     >
-      <s-input
-        v-model="setData.customApiUrl"
-        placeholder="http://127.0.0.1:30488"
-        width="w-[280px] max-md:w-full"
-      />
+      <div class="flex items-center gap-2 max-md:flex-wrap">
+        <s-input
+          v-model="setData.customApiUrl"
+          placeholder="例如 http://192.168.1.100:30488"
+          width="w-[280px] max-md:w-full"
+        />
+        <s-btn :loading="isTestingApi" @click="testApiConnection">测试连接</s-btn>
+      </div>
     </setting-item>
 
     <setting-item
@@ -72,6 +75,7 @@
 </template>
 
 <script setup lang="ts">
+import axios from 'axios';
 import { inject, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
@@ -87,6 +91,28 @@ import SInput from '../SInput.vue';
 const { t } = useI18n();
 const setData = inject(SETTINGS_DATA_KEY)!;
 const message = inject(SETTINGS_MESSAGE_KEY)!;
+
+const isTestingApi = ref(false);
+const testApiConnection = async () => {
+  const url = (setData.value.customApiUrl || '').trim();
+  if (!url) {
+    message.warning('请先输入 API 服务端地址');
+    return;
+  }
+  isTestingApi.value = true;
+  try {
+    const res = await axios.get(`${url.replace(/\/+$/, '')}/banner`, { timeout: 5000 });
+    if (res.status === 200) {
+      message.success('API 服务连接成功！');
+    } else {
+      message.warning(`API 服务响应状态码: ${res.status}`);
+    }
+  } catch (err: any) {
+    message.error(`连接失败: ${err.message || '无法访问该地址，请检查网络或端口'}`);
+  } finally {
+    isTestingApi.value = false;
+  }
+};
 
 const showProxyModal = ref(false);
 const proxyForm = ref({ protocol: 'http', host: '127.0.0.1', port: 7890 });

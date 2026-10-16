@@ -35,6 +35,13 @@ request.interceptors.request.use(
   (config: CustomAxiosRequestConfig) => {
     setData = getSetData();
     config.baseURL = getResolvedBaseURL();
+
+    if (!isElectron && config.baseURL?.includes('127.0.0.1')) {
+      // 移动端/iOS 默认 127.0.0.1 不存在本地进程，缩短超时至 2.5s 避免页面长久假死
+      config.timeout = 2500;
+      config.noRetry = true;
+    }
+
     // 只在retryCount未定义时初始化为0
     if (config.retryCount === undefined) {
       config.retryCount = 0;

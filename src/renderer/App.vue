@@ -4,7 +4,6 @@
       <n-dialog-provider>
         <n-message-provider>
           <router-view></router-view>
-          <traffic-warning-drawer v-if="!isElectron"></traffic-warning-drawer>
           <disclaimer-modal></disclaimer-modal>
         </n-message-provider>
       </n-dialog-provider>
@@ -133,19 +132,6 @@ onMounted(async () => {
     return;
   }
 
-  // 检查网络状态，离线时自动跳转到本地音乐页面
-  if (!navigator.onLine) {
-    router.push('/local-music');
-  }
-
-  // 监听网络状态变化，断网时跳转到本地音乐页面
-  const handleOffline = () => {
-    router.push('/local-music');
-  };
-  window.addEventListener('offline', handleOffline);
-  onUnmounted(() => {
-    window.removeEventListener('offline', handleOffline);
-  });
 
   // 初始化 MusicHook，注入 playerStore
   initMusicHook(playerStore);

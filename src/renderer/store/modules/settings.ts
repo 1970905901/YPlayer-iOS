@@ -216,10 +216,20 @@ export const useSettingsStore = defineStore('settings', () => {
 
   // 计算移动端状态的函数
   const calculateMobileStatus = () => {
+    // iPad 与平板大屏设备（屏幕宽度 >= 768px 或 iPadOS）使用完整的 iPad / 桌面播放器大屏布局
+    const isIPad =
+      /iPad/i.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
+      window.innerWidth >= 768;
+
+    if (isIPad) {
+      return false;
+    }
+
     const userAgentFlag = navigator.userAgent.match(
-      /(phone|pad|pod|iPhone|iPod|ios|iPad|Android|Mobile|BlackBerry|IEMobile|MQQBrowser|JUC|Fennec|wOSBrowser|BrowserNG|WebOS|Symbian|Windows Phone)/i
+      /(phone|pod|iPhone|iPod|Android|Mobile|BlackBerry|IEMobile)/i
     );
-    const isMobileWidth = window.innerWidth < 500;
+    const isMobileWidth = window.innerWidth < 768;
     const isMobileDevice = !!userAgentFlag || isMobileWidth;
     const tabletMode = setData.value?.tabletMode;
 

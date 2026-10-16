@@ -39,7 +39,13 @@ export default defineConfig(({ mode }) => ({
     outDir: resolve('dist'),
     emptyOutDir: true,
     // 构建目标支持 iOS 14.0 / Safari 14
-    target: ['es2020', 'safari14', 'ios14']
+    target: ['es2020', 'safari14', 'ios14'],
+    rollupOptions: {
+      output: {
+        // 全部代码打包到单 entry chunk，彻底解决生产构建下 store 循环引用 TDZ 问题
+        manualChunks: () => 'index'
+      }
+    }
   },
   server: {
     host: '0.0.0.0',

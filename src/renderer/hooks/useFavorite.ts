@@ -12,7 +12,7 @@ export function useFavorite() {
   /** 当前歌曲是否已收藏 */
   const isFavorite = computed(() => {
     if (!playMusic?.value?.id) return false;
-    return playerStore.favoriteList.includes(playMusic.value.id);
+    return playerStore.isFavorite(playMusic.value.id);
   });
 
   /** 切换收藏状态 */

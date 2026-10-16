@@ -285,7 +285,10 @@ const getFavoriteSongs = async () => {
   try {
     const currentIds = getCurrentPageIds();
 
-    const musicIds = currentIds.filter((id) => typeof id === 'number') as number[];
+    const musicIds = currentIds
+      .filter((id) => !(typeof id === 'string' && id.includes('--')))
+      .map((id) => (typeof id === 'number' ? id : parseInt(String(id), 10)))
+      .filter((id) => !isNaN(id) && id > 0);
 
     let neteaseSongs: SongResult[] = [];
     if (musicIds.length > 0) {

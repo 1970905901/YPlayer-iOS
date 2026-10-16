@@ -140,7 +140,22 @@ const loginPhone = async () => {
     if (data.code === 200) {
       message.success(t('login.message.loginSuccess'));
       userStore.setUser(data.profile);
+      userStore.setLoginType('token');
       localStorage.setItem('token', data.cookie);
+
+      try {
+        const { useFavoriteStore } = await import('@/store/modules/favorite');
+        const favoriteStore = useFavoriteStore();
+        Promise.allSettled([
+          favoriteStore.initializeFavoriteList(),
+          userStore.initializePlaylist(),
+          userStore.initializeAlbumList(),
+          userStore.initializeCollectedAlbums()
+        ]);
+      } catch (syncErr) {
+        console.error('手机号登录后同步收藏失败:', syncErr);
+      }
+
       setTimeout(() => {
         router.push('/user');
       }, 1000);
@@ -167,7 +182,7 @@ const switchToMode = (mode: LoginMode) => {
 };
 
 // 通用登录成功处理
-const handleLoginSuccess = (userProfile: any, loginType: string) => {
+const handleLoginSuccess = async (userProfile: any, loginType: string) => {
   // 更新 userStore（这会同时更新 store 状态和 localStorage 中的用户数据）
   userStore.setUser(userProfile);
 
@@ -183,6 +198,20 @@ const handleLoginSuccess = (userProfile: any, loginType: string) => {
 
   if (loginType === 'uid') {
     localStorage.setItem('uidLogin', 'true');
+  }
+
+  // 登录成功后立即同步网易云收藏与歌单
+  try {
+    const { useFavoriteStore } = await import('@/store/modules/favorite');
+    const favoriteStore = useFavoriteStore();
+    Promise.allSettled([
+      favoriteStore.initializeFavoriteList(),
+      userStore.initializePlaylist(),
+      userStore.initializeAlbumList(),
+      userStore.initializeCollectedAlbums()
+    ]);
+  } catch (syncErr) {
+    console.error('登录后同步用户数据及收藏失败:', syncErr);
   }
 
   setTimeout(() => {

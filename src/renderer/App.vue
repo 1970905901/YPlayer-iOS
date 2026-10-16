@@ -138,6 +138,17 @@ onMounted(async () => {
   // 初始化播放状态
   await playerStore.initializePlayState();
 
+  // 初始化用户数据与网易云收藏列表同步
+  if (userStore.user) {
+    userStore.initializeUser().catch((err) => {
+      console.error('[App] 初始化用户数据失败:', err);
+    });
+  } else {
+    playerStore.initializeFavoriteList().catch((err) => {
+      console.error('[App] 初始化本地收藏失败:', err);
+    });
+  }
+
   // 初始化音频设备变化监听器
   playerCoreStore.initAudioDeviceListener();
 

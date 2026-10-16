@@ -35,15 +35,11 @@ export function useSongItem(props: { item: SongResult; canRemove?: boolean }) {
 
   // 收藏与不喜欢状态
   const isFavorite = computed(() => {
-    const numericId =
-      typeof props.item.id === 'string' ? parseInt(props.item.id, 10) : props.item.id;
-    return playerStore.favoriteList.includes(numericId);
+    return props.item?.id ? playerStore.isFavorite(props.item.id) : false;
   });
 
   const isDislike = computed(() => {
-    const numericId =
-      typeof props.item.id === 'string' ? parseInt(props.item.id, 10) : props.item.id;
-    return playerStore.dislikeList.includes(numericId);
+    return props.item?.id ? playerStore.isDisliked(props.item.id) : false;
   });
 
   // 获取艺术家列表
@@ -77,13 +73,12 @@ export function useSongItem(props: { item: SongResult; canRemove?: boolean }) {
   // 切换收藏状态
   const toggleFavorite = async (e: Event) => {
     e && e.stopPropagation();
-    const numericId =
-      typeof props.item.id === 'string' ? parseInt(props.item.id, 10) : props.item.id;
+    if (!props.item?.id) return;
 
     if (isFavorite.value) {
-      playerStore.removeFromFavorite(numericId);
+      playerStore.removeFromFavorite(props.item.id);
     } else {
-      playerStore.addToFavorite(numericId);
+      playerStore.addToFavorite(props.item.id);
     }
   };
 

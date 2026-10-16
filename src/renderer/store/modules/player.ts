@@ -147,11 +147,13 @@ export const usePlayerStore = defineStore('player', () => {
     favoriteList,
     dislikeList,
 
-    // Favorite - Actions
+    // Favorite - Actions & Getters
     addToFavorite: favorite.addToFavorite,
     removeFromFavorite: favorite.removeFromFavorite,
     addToDislikeList: favorite.addToDislikeList,
     removeFromDislikeList: favorite.removeFromDislikeList,
+    isFavorite: favorite.isFavorite,
+    isDisliked: favorite.isDisliked,
 
     // ========== 定时关闭 (SleepTimer) ==========
     sleepTimer: sleepTimerState,

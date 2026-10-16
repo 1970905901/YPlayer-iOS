@@ -485,14 +485,15 @@ const showPlaylist = () => {
 
 // 喜欢歌曲
 const isFavorite = computed(() => {
-  return playerStore.favoriteList.includes(playMusic.value.id as number);
+  return playMusic.value?.id ? playerStore.isFavorite(playMusic.value.id) : false;
 });
 
 const toggleFavorite = () => {
+  if (!playMusic.value?.id) return;
   if (isFavorite.value) {
-    playerStore.removeFromFavorite(playMusic.value.id as number);
+    playerStore.removeFromFavorite(playMusic.value.id);
   } else {
-    playerStore.addToFavorite(playMusic.value.id as number);
+    playerStore.addToFavorite(playMusic.value.id);
   }
 };
 

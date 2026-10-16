@@ -62,6 +62,7 @@ export const useUserStore = defineStore('user', () => {
       playList.value = [];
       albumList.value = [];
       clearLoginStatus();
+      localStorage.removeItem('favoriteList');
       // 刷新
       window.location.reload();
     } catch (error) {
@@ -73,6 +74,7 @@ export const useUserStore = defineStore('user', () => {
       playList.value = [];
       albumList.value = [];
       clearLoginStatus();
+      localStorage.removeItem('favoriteList');
       window.location.reload();
     }
   };
@@ -164,22 +166,19 @@ export const useUserStore = defineStore('user', () => {
     const savedUser = getLocalStorageItem<UserData | null>('user', null);
     if (savedUser) {
       user.value = savedUser;
-      // 如果用户已登录，获取收藏列表
-      if (localStorage.getItem('token')) {
-        try {
-          // 并行加载歌单、专辑和收藏ID列表
-          await Promise.all([
-            initializePlaylist(),
-            initializeAlbumList(),
-            initializeCollectedAlbums()
-          ]);
-
-          const { data } = await getLikedList(savedUser.userId);
-          return data?.ids || [];
-        } catch (error) {
-          console.error('获取收藏列表失败:', error);
-          return [];
+      try {
+        const tasks: Promise<any>[] = [initializePlaylist()];
+        if (localStorage.getItem('token')) {
+          tasks.push(initializeAlbumList(), initializeCollectedAlbums());
         }
+        await Promise.allSettled(tasks);
+
+        const { useFavoriteStore } = await import('./favorite');
+        const favoriteStore = useFavoriteStore();
+        await favoriteStore.initializeFavoriteList();
+        return favoriteStore.favoriteList;
+      } catch (error) {
+        console.error('初始化用户数据及收藏失败:', error);
       }
     }
     return [];

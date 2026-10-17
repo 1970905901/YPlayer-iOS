@@ -281,7 +281,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onActivated, onMounted, ref } from 'vue';
+import { computed, onActivated, onDeactivated, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
@@ -332,9 +332,11 @@ const fmCurrentArtist = computed(() => {
   return artists?.map((a: any) => a.name).join(' / ') || '';
 });
 
+const isPageActive = ref(true);
 const isIntelligenceMode = computed(() => intelligenceModeStore.isIntelligenceMode);
 const isFmPlaying = computed(
   () =>
+    isPageActive.value &&
     !!fmCurrentSong.value &&
     playerCoreStore.currentSong?.id === fmCurrentSong.value.id &&
     playerCoreStore.isPlaying
@@ -637,7 +639,12 @@ onMounted(() => {
 });
 
 onActivated(() => {
+  isPageActive.value = true;
   recommendStore.refreshIfStale();
+});
+
+onDeactivated(() => {
+  isPageActive.value = false;
 });
 </script>
 
@@ -723,6 +730,8 @@ onActivated(() => {
 
 /* FM background flow animation when playing */
 .fm-bg-flow {
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
   animation: bgFlow 8s ease-in-out infinite alternate;
 }
 @keyframes bgFlow {

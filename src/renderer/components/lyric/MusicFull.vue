@@ -865,9 +865,6 @@ onMounted(() => {
   if (savedConfig) {
     config.value = readLyricConfig();
   }
-  if (lrcSider.value?.$el) {
-    lrcSider.value.$el.addEventListener('scroll', handleScroll);
-  }
 });
 
 // 添加对 playMusic.id 的监听，歌曲切换时滚动到顶部

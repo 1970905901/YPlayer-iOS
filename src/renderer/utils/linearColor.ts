@@ -58,20 +58,33 @@ export const getImageBackground = async (img: HTMLImageElement): Promise<IColor>
   }
 };
 
+let sharedCanvas: HTMLCanvasElement | null = null;
+let sharedCtx: CanvasRenderingContext2D | null = null;
+const COLOR_SAMPLE_SIZE = 32;
+
+const getSharedCanvasContext = () => {
+  if (typeof document === 'undefined') return null;
+  if (!sharedCanvas) {
+    sharedCanvas = document.createElement('canvas');
+    sharedCanvas.width = COLOR_SAMPLE_SIZE;
+    sharedCanvas.height = COLOR_SAMPLE_SIZE;
+    sharedCtx = sharedCanvas.getContext('2d', { willReadFrequently: true });
+  }
+  return { canvas: sharedCanvas, ctx: sharedCtx };
+};
+
 const getImageColor = (img: HTMLImageElement): Promise<string> => {
   return new Promise((resolve, reject) => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
+    const shared = getSharedCanvasContext();
+    if (!shared?.ctx) {
       reject(new Error('无法获取canvas上下文'));
       return;
     }
+    const { ctx } = shared;
+    ctx.clearRect(0, 0, COLOR_SAMPLE_SIZE, COLOR_SAMPLE_SIZE);
+    ctx.drawImage(img, 0, 0, COLOR_SAMPLE_SIZE, COLOR_SAMPLE_SIZE);
 
-    canvas.width = img.width;
-    canvas.height = img.height;
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const imageData = ctx.getImageData(0, 0, COLOR_SAMPLE_SIZE, COLOR_SAMPLE_SIZE);
     const color = getAverageColor(imageData.data);
     resolve(`rgb(${color.join(',')})`);
   });
@@ -84,18 +97,16 @@ const getImagePrimaryColor = (imageSrc: string): Promise<string> => {
     img.src = imageSrc;
 
     img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
+      const shared = getSharedCanvasContext();
+      if (!shared?.ctx) {
         reject(new Error('无法获取canvas上下文'));
         return;
       }
+      const { ctx } = shared;
+      ctx.clearRect(0, 0, COLOR_SAMPLE_SIZE, COLOR_SAMPLE_SIZE);
+      ctx.drawImage(img, 0, 0, COLOR_SAMPLE_SIZE, COLOR_SAMPLE_SIZE);
 
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, COLOR_SAMPLE_SIZE, COLOR_SAMPLE_SIZE);
       const color = getAverageColor(imageData.data);
       resolve(`rgb(${color.join(',')})`);
     };

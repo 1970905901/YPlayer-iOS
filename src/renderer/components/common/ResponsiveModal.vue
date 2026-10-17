@@ -91,6 +91,9 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', checkMobile);
+  if (show.value) {
+    document.body.style.overflow = '';
+  }
 });
 
 // Prevent body scroll when modal is open

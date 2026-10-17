@@ -104,6 +104,8 @@ provide('openPlaylistDrawer', openPlaylistDrawer);
 
 .mobile-content {
   @apply flex-1 overflow-y-auto overflow-x-hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
 
   // // 只有底部菜单
   // &.has-bottom-menu:not(.has-player) {

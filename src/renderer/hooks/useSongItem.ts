@@ -5,7 +5,6 @@ import { useI18n } from 'vue-i18n';
 import { usePlayerStore, useRecommendStore } from '@/store';
 import type { SongResult } from '@/types/music';
 import { getImgUrl } from '@/utils';
-import { getImageBackground } from '@/utils/linearColor';
 
 import { dislikeRecommendedSong } from '../api/music';
 import { useArtist } from './useArtist';
@@ -47,13 +46,9 @@ export function useSongItem(props: { item: SongResult; canRemove?: boolean }) {
     return (props.item.ar || props.item.song?.artists)?.slice(0, 4) || [];
   });
 
-  // 处理图片加载
-  const handleImageLoad = async (imageElement: HTMLImageElement) => {
-    if (!imageElement) return;
-
-    const { backgroundColor, primaryColor } = await getImageBackground(imageElement);
-    props.item.backgroundColor = backgroundColor;
-    props.item.primaryColor = primaryColor;
+  // 处理图片加载（列表项无需背景色，由播放器在切歌时按需提取，避免渲染长列表时数百次 Canvas 采样导致掉帧）
+  const handleImageLoad = async (_imageElement: HTMLImageElement) => {
+    return;
   };
 
   // 播放音乐

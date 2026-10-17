@@ -152,11 +152,16 @@ const overlayStyle = computed(() => ({
   background: backgroundGradient.value
 }));
 
+const hasExtractedColor = ref(false);
+
 const extractColor = async () => {
+  if (!props.showHoverTracks) return; // 移动端等不展示悬浮预览的场景，跳过颜色提取
+  if (hasExtractedColor.value) return;
   const img = coverRef.value;
   if (!img) return;
 
   try {
+    hasExtractedColor.value = true;
     const { primaryColor } = await getImageBackground(img);
     if (primaryColor) {
       // 使用 tinycolor 来创建更自然的渐变效果

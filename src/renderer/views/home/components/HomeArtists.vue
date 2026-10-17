@@ -68,7 +68,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 
 import { getHotSinger } from '@/api/home';
 import { useArtist } from '@/hooks/useArtist';
@@ -121,21 +121,36 @@ const handleWheel = (e: WheelEvent) => {
   updateScrollIndicators();
 };
 
-// Update scroll fade indicators
+// Update scroll fade indicators with rAF throttle to prevent layout thrashing
+let scrollRafId: number | null = null;
 const updateScrollIndicators = () => {
-  if (!scrollContainer.value) return;
+  if (scrollRafId) return;
+  scrollRafId = requestAnimationFrame(() => {
+    scrollRafId = null;
+    if (!scrollContainer.value) return;
 
-  const { scrollLeft, scrollWidth, clientWidth } = scrollContainer.value;
-  showLeftFade.value = scrollLeft > 20;
-  showRightFade.value = scrollLeft < scrollWidth - clientWidth - 20;
+    const { scrollLeft, scrollWidth, clientWidth } = scrollContainer.value;
+    showLeftFade.value = scrollLeft > 20;
+    showRightFade.value = scrollLeft < scrollWidth - clientWidth - 20;
+  });
 };
 
 onMounted(() => {
   fetchArtists();
 
-  // Add scroll listener for fade indicators
+  // Add scroll listener for fade indicators (passive for smooth scrolling)
   if (scrollContainer.value) {
-    scrollContainer.value.addEventListener('scroll', updateScrollIndicators);
+    scrollContainer.value.addEventListener('scroll', updateScrollIndicators, { passive: true });
+  }
+});
+
+onBeforeUnmount(() => {
+  if (scrollRafId) {
+    cancelAnimationFrame(scrollRafId);
+    scrollRafId = null;
+  }
+  if (scrollContainer.value) {
+    scrollContainer.value.removeEventListener('scroll', updateScrollIndicators);
   }
 });
 </script>

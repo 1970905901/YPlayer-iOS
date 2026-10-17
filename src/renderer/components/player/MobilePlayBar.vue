@@ -4,21 +4,15 @@
     class="mobile-play-bar"
     :class="[
       setAnimationClass('animate__fadeInUp'),
-      playerStore.musicFull ? 'play-bar-expanded' : 'play-bar-mini',
-      shouldShowMobileMenu ? 'is-menu-show' : 'is-menu-hide'
+      shouldShowMobileMenu ? 'is-menu-show' : 'is-menu-hide',
+      { 'is-full': playerStore.musicFull }
     ]"
     :style="{
-      color: playerStore.musicFull
-        ? textColors.theme === 'dark'
-          ? '#ffffff'
-          : '#ffffff'
-        : settingsStore.theme === 'dark'
-          ? '#ffffff'
-          : '#000000'
+      color: settingsStore.theme === 'dark' ? '#ffffff' : '#000000'
     }"
   >
-    <!-- Mini模式 - 在musicFullVisible为false时显示 -->
-    <div v-if="!playerStore.musicFull" class="mobile-mini-controls">
+    <!-- Mini模式 -->
+    <div class="mobile-mini-controls" :class="{ 'pointer-events-none': playerStore.musicFull }">
       <!-- 歌曲信息 -->
       <div class="mini-song-info" @click="setMusicFull">
         <n-image
@@ -65,7 +59,7 @@ import type { Ref } from 'vue';
 import { inject, onMounted, ref, watch } from 'vue';
 
 import MusicFullWrapper from '@/components/lyric/MusicFullWrapper.vue';
-import { artistList, playMusic, textColors } from '@/hooks/MusicHook';
+import { artistList, playMusic } from '@/hooks/MusicHook';
 import { usePlaybackControl } from '@/hooks/usePlaybackControl';
 import { usePlayerStore } from '@/store/modules/player';
 import { useSettingsStore } from '@/store/modules/settings';
@@ -130,11 +124,12 @@ watch(
 
 <style lang="scss" scoped>
 .mobile-play-bar {
-  @apply fixed left-0 w-full flex flex-col;
+  @apply fixed left-0 w-full flex flex-col h-14 py-0;
   bottom: calc(max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)) + 44px);
   z-index: 10000;
   animation-duration: 0.3s !important;
-  transition: all 0.3s ease;
+  transition: bottom 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: bottom;
 
   &.is-menu-show {
     bottom: calc(max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)) + 44px);
@@ -143,115 +138,8 @@ watch(
     bottom: calc(max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)) + 18px);
   }
 
-  &.play-bar-expanded {
-    @apply bg-transparent;
-    height: auto; /* 自动适应内容高度 */
-    max-height: 230px; /* 限制最大高度 */
-    background: linear-gradient(
-      to bottom,
-      rgba(0, 0, 0, 0) 0%,
-      rgba(0, 0, 0, 0.5) 20%,
-      rgba(0, 0, 0, 0.8) 80%,
-      rgba(0, 0, 0, 0.9) 100%
-    );
-  }
-
-  &.play-bar-mini {
-    @apply h-14 py-0;
-  }
-
-  // 进度条
-  .music-progress-bar {
-    @apply flex items-center justify-between px-4 py-2 relative z-10;
-
-    .current-time,
-    .total-time {
-      @apply text-xs text-white opacity-80;
-    }
-
-    .progress-wrapper {
-      @apply flex-1 mx-3 flex flex-col items-center;
-
-      .progress-slider {
-        @apply w-full;
-
-        :deep(.n-slider) {
-          --n-rail-height: 3px;
-          --n-rail-color: rgba(255, 255, 255, 0.15);
-          --n-rail-color-dark: rgba(255, 255, 255, 0.15);
-          --n-fill-color: #22c55e;
-          --n-handle-size: 0px; /* 隐藏滑块 */
-          --n-handle-color: #22c55e;
-
-          &:hover {
-            --n-handle-size: 10px; /* 鼠标悬停时显示滑块 */
-          }
-
-          .n-slider-rail {
-            @apply rounded-full !important; /* 圆角进度条 */
-          }
-
-          .n-slider-fill {
-            @apply rounded-full !important;
-            box-shadow: 0 0 4px rgba(30, 215, 96, 0.5); /* 发光效果 */
-          }
-
-          .n-slider-handle {
-            @apply transition-all duration-200;
-            opacity: 0;
-            box-shadow: 0 0 4px rgba(255, 255, 255, 0.7);
-          }
-
-          &:hover .n-slider-handle,
-          &:active .n-slider-handle {
-            opacity: 1;
-          }
-        }
-      }
-
-      .quality-label {
-        @apply text-xs text-white opacity-70 mt-1;
-      }
-    }
-  }
-
-  // 主控制区
-  .player-controls {
-    @apply flex items-center justify-between px-8 py-3 relative z-10 pb-8;
-
-    .control-btn {
-      @apply flex items-center justify-center cursor-pointer transition;
-
-      i {
-        @apply text-white transition-all;
-      }
-
-      &.like i {
-        @apply text-2xl;
-      }
-
-      &.prev i,
-      &.next i {
-        @apply text-3xl;
-      }
-
-      &.play-pause {
-        @apply w-12 h-12 rounded-full flex items-center justify-center;
-        background: rgba(255, 255, 255, 0.2);
-
-        i {
-          @apply text-4xl;
-        }
-      }
-
-      &.list i {
-        @apply text-2xl;
-      }
-
-      .like-active {
-        @apply text-red-500;
-      }
-    }
+  &.is-full {
+    pointer-events: none;
   }
 
   // Mini模式样式

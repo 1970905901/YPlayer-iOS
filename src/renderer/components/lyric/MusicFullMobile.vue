@@ -1,11 +1,16 @@
 <template>
   <n-drawer
     v-model:show="isVisible"
+    class="music-full-mobile-drawer"
     height="100%"
     placement="bottom"
     :style="{ background: playerStore.playMusic.primaryColor || background }"
     :to="`#layout-main`"
-    :z-index="9998"
+    :z-index="10001"
+    display-directive="show"
+    :trap-focus="false"
+    :auto-focus="false"
+    :block-scroll="false"
   >
     <div
       id="mobile-drawer-target"
@@ -872,6 +877,7 @@ const handleThumbTouchEnd = (e: TouchEvent) => {
 const { isDark, applyBackground } = useLyricBackground({
   writeBgColor: () => playerStore.playMusic.primaryColor || undefined
 });
+let bgTimer: number | null = null;
 const config = ref<LyricConfig>({ ...DEFAULT_LYRIC_CONFIG });
 
 // 监听设置页等外部来源的配置变更，保持移动端播放页与设置页状态同步（#758）
@@ -941,16 +947,12 @@ const targetBackground = computed(() => {
   return props.background;
 });
 
-// 监听目标背景变化并更新文字颜色
-watch(
-  targetBackground,
-  (newBg) => {
-    if (newBg) {
-      applyBackground(newBg);
-    }
-  },
-  { immediate: true }
-);
+// 监听目标背景变化并更新文字颜色（仅在全屏播放器处于显示状态时执行，避免后台破坏全局样式变量或触发页面重绘）
+watch(targetBackground, (newBg) => {
+  if (newBg && isVisible.value) {
+    applyBackground(newBg);
+  }
+});
 
 // 组件卸载清理
 onBeforeUnmount(() => {
@@ -958,6 +960,11 @@ onBeforeUnmount(() => {
 
   if (autoScrollTimer.value) {
     clearTimeout(autoScrollTimer.value);
+  }
+
+  if (bgTimer) {
+    clearTimeout(bgTimer);
+    bgTimer = null;
   }
 
   // 清理睡眠定时器倒计时刷新 interval，避免组件卸载后残留、闭包持有 store 无法回收
@@ -1133,11 +1140,20 @@ onMounted(() => {
 // 当显示状态变化时，更新封面与背景融合效果
 watch(isVisible, (newVal) => {
   if (newVal) {
-    // 播放器显示时，重新设置背景颜色
-    if (targetBackground.value) {
-      applyBackground(targetBackground.value);
+    if (bgTimer) {
+      clearTimeout(bgTimer);
     }
+    // 延迟到抽屉滑入动画（300ms）结束后再执行耗时的背景提取与 CSS 根变量写入，避免在动画开始帧触发重排与重绘
+    bgTimer = window.setTimeout(() => {
+      if (isVisible.value && targetBackground.value) {
+        applyBackground(targetBackground.value);
+      }
+    }, 320);
   } else {
+    if (bgTimer) {
+      clearTimeout(bgTimer);
+      bgTimer = null;
+    }
     showFullLyrics.value = false;
     if (autoScrollTimer.value) {
       clearTimeout(autoScrollTimer.value);
@@ -1225,9 +1241,22 @@ const getWordStyle = (lineIndex: number, _wordIndex: number, word: any) => {
 </script>
 
 <style scoped lang="scss">
+:global(.music-full-mobile-drawer) {
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  contain: paint;
+}
+
 #mobile-drawer-target {
   @apply top-0 left-0 absolute overflow-hidden flex flex-col w-full h-full;
   animation-duration: 300ms;
+  contain: strict;
+  transform: translate3d(0, 0, 0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  will-change: transform;
 
   // 通用控制按钮样式
   .main-button {

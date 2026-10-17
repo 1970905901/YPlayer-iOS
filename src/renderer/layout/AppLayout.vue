@@ -40,11 +40,7 @@
           v-show="isPlay"
           :style="playerStore.musicFull ? 'bottom: 0;' : ''"
         />
-        <mobile-play-bar
-          v-else
-          v-show="isPlay"
-          :style="settingsStore.isMobile && playerStore.musicFull ? 'bottom: 0;' : ''"
-        />
+        <mobile-play-bar v-else v-show="isPlay" />
       </template>
     </div>
     <update-modal v-if="isElectron" />
@@ -110,8 +106,8 @@ const route = useRoute();
 const shouldShowMobileMenu = computed(() => {
   // 过滤出在menus中定义的路径
   const menuPaths = menuStore.menus.map((item: any) => item.path);
-  // 检查当前路由路径是否在menus中
-  return menuPaths.includes(route.path) && settingsStore.isMobile && !playerStore.musicFull;
+  // 检查当前路由路径是否在menus中（移动端全屏播放器由自身全屏抽屉覆盖在上方，无需卸载底部菜单）
+  return menuPaths.includes(route.path) && settingsStore.isMobile;
 });
 
 provide('shouldShowMobileMenu', shouldShowMobileMenu);

@@ -59,10 +59,10 @@ provide('hasSafeArea', props.isPhone);
 // 是否有播放的歌曲
 const isPlay = computed(() => playerStore.playMusic && playerStore.playMusic.id);
 
-// 是否显示底部菜单
+// 是否显示底部菜单（由当前路由决定；全屏播放页由自身全屏抽屉在顶层完整覆盖，无需卸载底部菜单以避免页面重排和掉帧）
 const shouldShowBottomMenu = computed(() => {
   const menuPaths = menuStore.menus.map((item: any) => item.path);
-  return menuPaths.includes(route.path) && !playerStore.musicFull;
+  return menuPaths.includes(route.path);
 });
 
 // 提供给 MobilePlayBar 使用，用于调整播放栏位置

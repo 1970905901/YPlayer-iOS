@@ -1,5 +1,7 @@
 <template>
-  <div class="home-container h-full w-full max-w-full overflow-x-hidden bg-white dark:bg-black transition-colors duration-500">
+  <div
+    class="home-container h-full w-full max-w-full overflow-x-hidden bg-white dark:bg-black transition-colors duration-500"
+  >
     <n-scrollbar class="h-full w-full" :x-scrollable="false">
       <div class="home-content w-full max-w-full overflow-x-hidden pb-32 page-padding">
         <!-- Hero Section -->
@@ -8,7 +10,11 @@
         <!-- Main Content Sections -->
         <div class="content-sections space-y-10 md:space-y-8 lg:space-y-12">
           <!-- Recommended Playlists (Grid Section) -->
-          <home-playlist-section :title="t('comp.recommendSonglist.title')" :limit="18" />
+          <home-playlist-section
+            :title="t('comp.recommendSonglist.title')"
+            :limit="18"
+            @more="router.push('/list')"
+          />
 
           <!-- Hot Artists (Horizontal Scroll Section) -->
           <home-artists :title="t('comp.recommendSinger.title')" :limit="15" />

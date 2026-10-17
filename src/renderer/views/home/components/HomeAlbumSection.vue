@@ -9,7 +9,8 @@
         <div class="h-1.5 w-1.5 rounded-full bg-primary" />
       </div>
       <button
-        class="group flex items-center gap-1.5 text-sm font-semibold text-neutral-400 transition-colors hover:text-primary dark:text-neutral-500 dark:hover:text-white"
+        type="button"
+        class="group flex items-center gap-1.5 text-sm font-semibold text-neutral-400 transition-all hover:text-primary active:scale-95 cursor-pointer select-none py-1 px-1 dark:text-neutral-500 dark:hover:text-white"
         @click="$emit('more')"
       >
         <span>{{ t('comp.more') }}</span>

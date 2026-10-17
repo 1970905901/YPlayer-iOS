@@ -51,6 +51,10 @@ final class NowPlayingManager {
         commandCenter.seekForwardCommand.isEnabled = false
         commandCenter.seekBackwardCommand.isEnabled = false
 
+        // 彻底停用 stopCommand 避免与播放/暂停产生语义竞争
+        commandCenter.stopCommand.removeTarget(nil)
+        commandCenter.stopCommand.isEnabled = false
+
         // 启用上一首
         commandCenter.previousTrackCommand.removeTarget(nil)
         commandCenter.previousTrackCommand.isEnabled = true
@@ -115,6 +119,7 @@ final class NowPlayingManager {
         commandCenter.skipBackwardCommand.isEnabled = false
         commandCenter.seekForwardCommand.isEnabled = false
         commandCenter.seekBackwardCommand.isEnabled = false
+        commandCenter.stopCommand.isEnabled = false
 
         commandCenter.previousTrackCommand.isEnabled = true
         commandCenter.nextTrackCommand.isEnabled = true

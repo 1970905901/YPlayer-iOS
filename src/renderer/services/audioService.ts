@@ -88,6 +88,16 @@ class AudioService {
       this.emit('seek');
     });
 
+    this.audio.addEventListener('loadedmetadata', () => {
+      this.updateMediaSessionPositionState();
+      this.syncNativePlayState(!this.audio.paused);
+    });
+
+    this.audio.addEventListener('durationchange', () => {
+      this.updateMediaSessionPositionState();
+      this.syncNativePlayState(!this.audio.paused);
+    });
+
     this.audio.addEventListener('timeupdate', () => {
       // Consumers can listen to this if needed; mainly for MediaSession sync
     });
@@ -111,11 +121,11 @@ class AudioService {
 
   private initMediaSession() {
     navigator.mediaSession.setActionHandler('play', () => {
-      this.audio.play();
+      this.resume();
     });
 
     navigator.mediaSession.setActionHandler('pause', () => {
-      this.audio.pause();
+      this.pause();
     });
 
     navigator.mediaSession.setActionHandler('stop', () => {
@@ -201,10 +211,24 @@ class AudioService {
         artwork
       });
 
-      // 每次切换歌曲时再次确保禁用 15 秒快进快退，激活上一首/下一首
+      // 每次切换歌曲时再次确保禁用 15 秒快进快退，激活上一首/下一首/播放/暂停核心交互
       try {
         navigator.mediaSession.setActionHandler('seekbackward', null);
         navigator.mediaSession.setActionHandler('seekforward', null);
+        navigator.mediaSession.setActionHandler('play', () => {
+          this.resume();
+        });
+        navigator.mediaSession.setActionHandler('pause', () => {
+          this.pause();
+        });
+        navigator.mediaSession.setActionHandler('stop', () => {
+          this.stop();
+        });
+        navigator.mediaSession.setActionHandler('seekto', (event) => {
+          if (event.seekTime !== undefined) {
+            this.seek(event.seekTime);
+          }
+        });
         navigator.mediaSession.setActionHandler('previoustrack', () => {
           this.emit('previoustrack');
         });
@@ -575,6 +599,7 @@ class AudioService {
           this.audio.playbackRate = this.playbackRate;
           this.updateMediaSessionMetadata(track);
           this.updateMediaSessionPositionState();
+          this.syncNativePlayState(isPlay);
           this.emit('load');
           this.releaseOperationLock();
           resolve(this.audio);

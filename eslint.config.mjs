@@ -11,7 +11,14 @@ import globals from 'globals';
 export default [
   // 忽略文件配置
   {
-    ignores: ['node_modules/**', '**/dist/**', 'out/**', '.gitignore', 'ios/**']
+    ignores: [
+      'node_modules/**',
+      '**/dist/**',
+      'out/**',
+      '.gitignore',
+      'ios/**',
+      'src/renderer/api/ncmDirect/generatedModules.ts'
+    ]
   },
 
   // 基础 JavaScript 配置

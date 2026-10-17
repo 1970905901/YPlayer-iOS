@@ -97,10 +97,7 @@
       </div>
     </div>
 
-    <music-source-settings
-      v-model:show="showMusicSourcesModal"
-      v-model:sources="musicSources"
-    />
+    <music-source-settings v-model:show="showMusicSourcesModal" v-model:sources="musicSources" />
   </div>
 </template>
 

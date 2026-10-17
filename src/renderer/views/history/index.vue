@@ -26,7 +26,7 @@
           <div
             v-for="tab in ['songs', 'playlists', 'albums', 'podcasts']"
             :key="tab"
-            style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+            style="touch-action: manipulation; -webkit-tap-highlight-color: transparent"
             class="px-4 h-7 rounded-full text-xs font-medium cursor-pointer select-none active:scale-95 transition-transform duration-150 flex items-center justify-center whitespace-nowrap"
             :class="
               currentCategory === tab

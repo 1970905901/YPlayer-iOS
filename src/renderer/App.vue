@@ -129,7 +129,6 @@ onMounted(async () => {
     return;
   }
 
-
   // 初始化 MusicHook，注入 playerStore
   initMusicHook(playerStore);
   // 设置 URL 过期自动续播处理器

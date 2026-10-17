@@ -62,10 +62,10 @@ const useIndexedDB = <T extends string, S extends Record<T, Record<string, any>>
   };
 
   // 通用新增数据
-  const addData = <K extends T>(storeName: K, value: S[K]) => {
-    return new Promise<void>(async (resolve, reject) => {
+  const addData = async <K extends T>(storeName: K, value: S[K]): Promise<void> => {
+    const targetDb = await getDB();
+    return new Promise<void>((resolve, reject) => {
       try {
-        const targetDb = await getDB();
         const tx = targetDb.transaction(storeName, 'readwrite');
         const store = tx.objectStore(storeName);
 
@@ -86,10 +86,10 @@ const useIndexedDB = <T extends string, S extends Record<T, Record<string, any>>
   };
 
   // 通用保存数据（新增或更新）
-  const saveData = <K extends T>(storeName: K, value: S[K]) => {
-    return new Promise<void>(async (resolve, reject) => {
+  const saveData = async <K extends T>(storeName: K, value: S[K]): Promise<void> => {
+    const targetDb = await getDB();
+    return new Promise<void>((resolve, reject) => {
       try {
-        const targetDb = await getDB();
         const tx = targetDb.transaction(storeName, 'readwrite');
         const store = tx.objectStore(storeName);
         const request = store.put(value);
@@ -108,10 +108,10 @@ const useIndexedDB = <T extends string, S extends Record<T, Record<string, any>>
   };
 
   // 通用获取数据
-  const getData = <K extends T>(storeName: K, key: string | number) => {
-    return new Promise<S[K]>(async (resolve, reject) => {
+  const getData = async <K extends T>(storeName: K, key: string | number): Promise<S[K]> => {
+    const targetDb = await getDB();
+    return new Promise<S[K]>((resolve, reject) => {
       try {
-        const targetDb = await getDB();
         const tx = targetDb.transaction(storeName, 'readonly');
         const store = tx.objectStore(storeName);
         const request = store.get(key);
@@ -134,10 +134,10 @@ const useIndexedDB = <T extends string, S extends Record<T, Record<string, any>>
   };
 
   // 删除数据
-  const deleteData = <K extends T>(storeName: K, key: string | number) => {
-    return new Promise<void>(async (resolve, reject) => {
+  const deleteData = async <K extends T>(storeName: K, key: string | number): Promise<void> => {
+    const targetDb = await getDB();
+    return new Promise<void>((resolve, reject) => {
       try {
-        const targetDb = await getDB();
         const tx = targetDb.transaction(storeName, 'readwrite');
         const store = tx.objectStore(storeName);
         const request = store.delete(key);
@@ -156,10 +156,10 @@ const useIndexedDB = <T extends string, S extends Record<T, Record<string, any>>
   };
 
   // 查询所有数据
-  const getAllData = <K extends T>(storeName: K) => {
-    return new Promise<S[K][]>(async (resolve, reject) => {
+  const getAllData = async <K extends T>(storeName: K): Promise<S[K][]> => {
+    const targetDb = await getDB();
+    return new Promise<S[K][]>((resolve, reject) => {
       try {
-        const targetDb = await getDB();
         const tx = targetDb.transaction(storeName, 'readonly');
         const store = tx.objectStore(storeName);
         const request = store.getAll();
@@ -182,10 +182,14 @@ const useIndexedDB = <T extends string, S extends Record<T, Record<string, any>>
   };
 
   // 分页查询数据
-  const getDataWithPagination = <K extends T>(storeName: K, page: number, pageSize: number) => {
-    return new Promise<S[K][]>(async (resolve, reject) => {
+  const getDataWithPagination = async <K extends T>(
+    storeName: K,
+    page: number,
+    pageSize: number
+  ): Promise<S[K][]> => {
+    const targetDb = await getDB();
+    return new Promise<S[K][]>((resolve, reject) => {
       try {
-        const targetDb = await getDB();
         const tx = targetDb.transaction(storeName, 'readonly');
         const store = tx.objectStore(storeName);
         const request = store.openCursor();

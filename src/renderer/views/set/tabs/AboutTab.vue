@@ -28,12 +28,7 @@
       </template>
     </setting-item>
 
-    <setting-item
-      :title="t('settings.about.author')"
-      description="Y"
-      clickable
-      @click="openAuthor"
-    >
+    <setting-item :title="t('settings.about.author')" description="Y" clickable @click="openAuthor">
       <s-btn @click.stop="openAuthor">
         <i class="ri-github-line mr-1"></i>{{ t('settings.about.gotoGithub') }}
       </s-btn>

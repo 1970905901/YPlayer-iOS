@@ -25,7 +25,7 @@
                 v-for="type in searchTypeOptions"
                 :key="type.key"
                 type="button"
-                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent"
                 class="px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap select-none active:scale-95 transition-transform duration-150"
                 :class="
                   searchType === type.key

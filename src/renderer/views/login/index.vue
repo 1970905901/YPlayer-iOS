@@ -26,11 +26,7 @@
             </div>
 
             <!-- 手机号登录 -->
-            <div
-              v-else-if="activeMode === LoginMode.PHONE"
-              key="phone"
-              class="phone"
-            >
+            <div v-else-if="activeMode === LoginMode.PHONE" key="phone" class="phone">
               <div class="login-title">{{ t('login.title.phone') }}</div>
               <div class="phone-page">
                 <input
@@ -53,20 +49,12 @@
             </div>
 
             <!-- UID登录组件 -->
-            <div
-              v-else-if="activeMode === LoginMode.UID"
-              key="uid"
-              class="phone"
-            >
+            <div v-else-if="activeMode === LoginMode.UID" key="uid" class="phone">
               <uid-login @login-success="handleLoginSuccess" @login-error="handleLoginError" />
             </div>
 
             <!-- Cookie登录组件 -->
-            <div
-              v-else-if="activeMode === LoginMode.COOKIE"
-              key="token"
-              class="phone"
-            >
+            <div v-else-if="activeMode === LoginMode.COOKIE" key="token" class="phone">
               <cookie-login @login-success="handleLoginSuccess" @login-error="handleLoginError" />
             </div>
           </transition>

@@ -651,9 +651,15 @@ onUnmounted(() => {
 
 /* 顶部栏安全区域适配，避免刘海与灵动岛遮挡歌曲信息与关闭按钮 */
 .mv-top-bar {
-  padding-top: calc(max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)) + 14px) !important;
-  padding-left: calc(max(env(safe-area-inset-left, 0px), var(--safe-area-inset-left, 0px)) + 16px) !important;
-  padding-right: calc(max(env(safe-area-inset-right, 0px), var(--safe-area-inset-right, 0px)) + 16px) !important;
+  padding-top: calc(
+    max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)) + 14px
+  ) !important;
+  padding-left: calc(
+    max(env(safe-area-inset-left, 0px), var(--safe-area-inset-left, 0px)) + 16px
+  ) !important;
+  padding-right: calc(
+    max(env(safe-area-inset-right, 0px), var(--safe-area-inset-right, 0px)) + 16px
+  ) !important;
   padding-bottom: 16px !important;
 }
 </style>

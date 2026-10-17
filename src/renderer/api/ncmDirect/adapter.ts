@@ -1,10 +1,13 @@
 // @ts-nocheck
 import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios';
+
 import { ncmModules } from './generatedModules';
 import { nativeHttpRequest } from './nativeHttp';
 import { ncmRequest } from './ncmRequest';
 
-export const directNcmAdapter = async (config: InternalAxiosRequestConfig): Promise<AxiosResponse> => {
+export const directNcmAdapter = async (
+  config: InternalAxiosRequestConfig
+): Promise<AxiosResponse> => {
   let url = config.url || '';
 
   // 如果包含完整外链 (非 127.0.0.1 回环)，直接通过 nativeHttpRequest 隧道请求
@@ -19,7 +22,7 @@ export const directNcmAdapter = async (config: InternalAxiosRequestConfig): Prom
       let responseData = response.data;
       try {
         responseData = JSON.parse(response.data);
-      } catch (_e) {
+      } catch {
         // Keep string
       }
       return {
@@ -34,7 +37,7 @@ export const directNcmAdapter = async (config: InternalAxiosRequestConfig): Prom
     try {
       const parsed = new URL(url);
       url = parsed.pathname + parsed.search;
-    } catch (_e) {
+    } catch {
       // ignore
     }
   }
@@ -64,7 +67,7 @@ export const directNcmAdapter = async (config: InternalAxiosRequestConfig): Prom
     if (typeof config.data === 'string') {
       try {
         Object.assign(query, JSON.parse(config.data));
-      } catch (_e) {
+      } catch {
         // form urlencoded string
         const bodyParams = new URLSearchParams(config.data);
         bodyParams.forEach((v, k) => {

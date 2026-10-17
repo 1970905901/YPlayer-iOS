@@ -126,7 +126,8 @@ defineExpose({
 .category-btn {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
-  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+  transition:
+    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
     background-color 0.12s ease,
     color 0.12s ease,
     box-shadow 0.15s ease;

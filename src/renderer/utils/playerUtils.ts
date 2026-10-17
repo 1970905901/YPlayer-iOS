@@ -115,7 +115,7 @@ export const preloadCoverImage = (
   if (!picUrl) return;
 
   try {
-    const imageUrl = getImgUrl(picUrl, '1024y1024');
+    const imageUrl = getImgUrl(picUrl, '500y500');
     console.log('预加载封面图片:', imageUrl);
 
     // 同步触发 iOS 原生预下载与缓存

@@ -167,7 +167,7 @@ class AudioService {
     this.currentLyric = trimmed;
 
     try {
-      if ('mediaSession' in navigator && navigator.mediaSession.metadata) {
+      if (!nativeBridge.isIOS && 'mediaSession' in navigator && navigator.mediaSession.metadata) {
         // 歌词单独展示在副标题位置，不添加歌手名（歌手名已合并至标题行，保持同字号、同粗细、同颜色）
         const artists = this.currentTrack?.ar
           ? this.currentTrack.ar.map((a: any) => a.name)
@@ -183,68 +183,6 @@ class AudioService {
       const curTime = isFinite(this.audio?.currentTime) ? this.audio.currentTime : 0;
       const duration = isFinite(this.audio?.duration) ? this.audio.duration : 0;
       nativeBridge.updateLyric(trimmed, curTime, duration);
-    } catch {
-      // ignore
-    }
-  }
-
-  private currentBlobUrl: string | null = null;
-
-  private async loadArtworkAsBlobUrl(imageUrl: string) {
-    if (!imageUrl) return;
-    try {
-      let blob: Blob | null = null;
-      try {
-        const response = await fetch(imageUrl, { mode: 'cors' });
-        if (response.ok) {
-          blob = await response.blob();
-        }
-      } catch {
-        // fetch fallback
-      }
-
-      if (!blob) {
-        blob = await new Promise<Blob | null>((resolve) => {
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.onload = () => {
-            try {
-              const canvas = document.createElement('canvas');
-              canvas.width = Math.min(img.naturalWidth || 500, 500);
-              canvas.height = Math.min(img.naturalHeight || 500, 500);
-              const ctx = canvas.getContext('2d');
-              if (ctx) {
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.9);
-              } else {
-                resolve(null);
-              }
-            } catch {
-              resolve(null);
-            }
-          };
-          img.onerror = () => resolve(null);
-          img.src = imageUrl;
-        });
-      }
-
-      if (!blob) return;
-
-      if (this.currentBlobUrl) {
-        URL.revokeObjectURL(this.currentBlobUrl);
-      }
-      const blobUrl = URL.createObjectURL(blob);
-      this.currentBlobUrl = blobUrl;
-
-      if ('mediaSession' in navigator && navigator.mediaSession.metadata) {
-        navigator.mediaSession.metadata.artwork = [
-          { src: blobUrl, sizes: '512x512', type: 'image/jpeg' },
-          { src: blobUrl, sizes: '256x256', type: 'image/jpeg' },
-          { src: blobUrl, sizes: '128x128', type: 'image/jpeg' },
-          { src: blobUrl, sizes: '96x96', type: 'image/jpeg' },
-          { src: imageUrl, sizes: '512x512', type: 'image/jpeg' }
-        ];
-      }
     } catch {
       // ignore
     }
@@ -277,15 +215,13 @@ class AudioService {
         { src: rawCoverUrl, sizes: '512x512', type: 'image/jpeg' }
       ];
 
-      navigator.mediaSession.metadata = new window.MediaMetadata({
-        title: combinedTitle,
-        artist: this.currentLyric || artistsStr || ' ', // 优先展示实时歌词，无歌词时回退歌手名，避免空字符串触发系统置灰
-        album: album || '',
-        artwork
-      });
-
-      if (coverUrl500) {
-        void this.loadArtworkAsBlobUrl(coverUrl500);
+      if (!nativeBridge.isIOS) {
+        navigator.mediaSession.metadata = new window.MediaMetadata({
+          title: combinedTitle,
+          artist: this.currentLyric || artistsStr || ' ', // 优先展示实时歌词，无歌词时回退歌手名，避免空字符串触发系统置灰
+          album: album || '',
+          artwork
+        });
       }
 
       // 每次切换歌曲时再次确保禁用 15 秒快进快退，激活上一首/下一首/播放/暂停核心交互
@@ -323,7 +259,7 @@ class AudioService {
   }
 
   private updateMediaSessionState(isPlaying: boolean) {
-    if ('mediaSession' in navigator) {
+    if (!nativeBridge.isIOS && 'mediaSession' in navigator) {
       navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
     }
     this.updateMediaSessionPositionState();
@@ -332,7 +268,12 @@ class AudioService {
 
   private updateMediaSessionPositionState() {
     try {
-      if ('mediaSession' in navigator && this.audio.duration && isFinite(this.audio.duration)) {
+      if (
+        !nativeBridge.isIOS &&
+        'mediaSession' in navigator &&
+        this.audio.duration &&
+        isFinite(this.audio.duration)
+      ) {
         if ('setPositionState' in navigator.mediaSession) {
           navigator.mediaSession.setPositionState({
             duration: this.audio.duration,

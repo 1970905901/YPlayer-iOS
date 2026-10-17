@@ -25,6 +25,8 @@ final class NowPlayingManager {
     private var cachedArtwork: MPMediaItemArtwork?
     private let imageCache = NSCache<NSString, UIImage>()
     private var currentInfo = [String: Any]()
+    private var pendingNowPlayingInfo: [String: Any]?
+    private var artworkLoadTimeoutWorkItem: DispatchWorkItem?
     private var screenScale: CGFloat = 3.0
 
     private var baseArtist: String = ""
@@ -204,6 +206,20 @@ final class NowPlayingManager {
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+
+            // 若当前正在等待封面加载，仅更新暂存字典，绝不提前向系统推送无封面元数据
+            if var pending = self.pendingNowPlayingInfo {
+                pending[MPMediaItemPropertyArtist] = trimmed
+                if let currentTime = currentTime, currentTime >= 0 {
+                    pending[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
+                }
+                if let duration = duration, duration > 0 {
+                    pending[MPMediaItemPropertyPlaybackDuration] = duration
+                }
+                self.pendingNowPlayingInfo = pending
+                return
+            }
+
             var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? self.currentInfo
             if !self.baseTitle.isEmpty {
                 let combinedTitle = self.baseArtist.isEmpty ? self.baseTitle : "\(self.baseTitle) - \(self.baseArtist)"
@@ -262,31 +278,74 @@ final class NowPlayingManager {
         // 规范化封面 URL (转 https，替换 1024/800 为标准 500y500)
         let cleanArtworkUrl = sanitizeArtworkUrl(info.artworkUrl)
 
-        // 如果封面 URL 发生改变且不为空，请求新封面图片
+        // Case 1: 歌曲没有封面
         if cleanArtworkUrl.isEmpty {
+            artworkLoadTimeoutWorkItem?.cancel()
+            artworkLoadTimeoutWorkItem = nil
+            pendingNowPlayingInfo = nil
             if !self.isCurrentlyPlaying {
                 cachedArtwork = nil
                 currentArtworkUrl = nil
                 imageCache.removeAllObjects()
             }
-        } else if cleanArtworkUrl != currentArtworkUrl {
-            currentArtworkUrl = cleanArtworkUrl
-            // 检查内存图片缓存，若已存在则直接构造 Artwork 避免空白与延迟
-            if let cachedImage = imageCache.object(forKey: cleanArtworkUrl as NSString) {
-                cachedArtwork = createArtwork(from: cachedImage)
-            } else {
-                // 后台异步下载封面，避免切歌卡顿
-                loadArtwork(from: cleanArtworkUrl, isPreload: false)
-            }
+            self.currentInfo = nowPlayingInfo
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+            return
         }
 
-        // 复用已缓存的封面，避免重复网络加载，新封面加载完成后会自动无缝替换
-        if let cached = cachedArtwork {
+        // Case 2: 正在等待这首歌曲的封面异步下载中
+        if pendingNowPlayingInfo != nil, cleanArtworkUrl == currentArtworkUrl {
+            // 只更新 pendingNowPlayingInfo 中的最新播放进度和状态，坚决不向系统泄露无封面元数据
+            self.pendingNowPlayingInfo = nowPlayingInfo
+            return
+        }
+
+        // Case 3: 同一首歌曲且封面已有缓存
+        if cleanArtworkUrl == currentArtworkUrl, let cached = cachedArtwork {
+            artworkLoadTimeoutWorkItem?.cancel()
+            artworkLoadTimeoutWorkItem = nil
+            pendingNowPlayingInfo = nil
             nowPlayingInfo[MPMediaItemPropertyArtwork] = cached
+            self.currentInfo = nowPlayingInfo
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+            return
         }
 
-        self.currentInfo = nowPlayingInfo
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        // Case 4: 新歌曲或封面 URL 改变
+        currentArtworkUrl = cleanArtworkUrl
+        cachedArtwork = nil
+
+        // 检查内存图片缓存
+        if let cachedImage = imageCache.object(forKey: cleanArtworkUrl as NSString) {
+            artworkLoadTimeoutWorkItem?.cancel()
+            artworkLoadTimeoutWorkItem = nil
+            pendingNowPlayingInfo = nil
+            let artwork = createArtwork(from: cachedImage)
+            cachedArtwork = artwork
+            nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
+            self.currentInfo = nowPlayingInfo
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+            return
+        }
+
+        // Case 5: 新歌曲且未缓存封面 -> 绝对原子等待
+        // 暂存 pendingNowPlayingInfo，坚决不在封面就绪前向系统推送无封面元数据！
+        artworkLoadTimeoutWorkItem?.cancel()
+        self.pendingNowPlayingInfo = nowPlayingInfo
+
+        // 设置 1.2 秒保底超时：若极端网络超时/离线，则保底推送无封面元数据，确保播放控制手势可用
+        let timeoutWorkItem = DispatchWorkItem { [weak self] in
+            guard let self = self, let pending = self.pendingNowPlayingInfo else { return }
+            print("[NowPlayingManager] 封面下载超时，保底推送播放信息")
+            self.pendingNowPlayingInfo = nil
+            self.currentInfo = pending
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = pending
+        }
+        self.artworkLoadTimeoutWorkItem = timeoutWorkItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: timeoutWorkItem)
+
+        // 启动异步下载
+        loadArtwork(from: cleanArtworkUrl, isPreload: false)
     }
 
     /// 规范化封面图片 URL
@@ -420,10 +479,16 @@ final class NowPlayingManager {
     private func applyArtwork(_ image: UIImage, for urlString: String) {
         guard currentArtworkUrl == urlString else { return }
 
+        artworkLoadTimeoutWorkItem?.cancel()
+        artworkLoadTimeoutWorkItem = nil
+
         let artwork = createArtwork(from: image)
         cachedArtwork = artwork
 
-        var info = currentInfo
+        // 如果存在 pendingNowPlayingInfo，合并封面并向系统首次原子发布完整元数据
+        var info = pendingNowPlayingInfo ?? currentInfo
+        pendingNowPlayingInfo = nil
+
         info[MPMediaItemPropertyArtwork] = artwork
         info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         info[MPNowPlayingInfoPropertyIsLiveStream] = false
@@ -431,13 +496,14 @@ final class NowPlayingManager {
         info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
         currentInfo = info
 
-        // 核心突破：通过 nil 置空重绘，强制 iOS SpringBoard 立即重新构建锁屏小卡片视图，彻底解决初始折叠状态不显示封面问题！
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
     /// 清除所有封面图片缓存，响应整软件资源缓存清理或不缓存策略
     func clearArtworkCache() {
+        artworkLoadTimeoutWorkItem?.cancel()
+        artworkLoadTimeoutWorkItem = nil
+        pendingNowPlayingInfo = nil
         imageCache.removeAllObjects()
         cachedArtwork = nil
         currentArtworkUrl = nil

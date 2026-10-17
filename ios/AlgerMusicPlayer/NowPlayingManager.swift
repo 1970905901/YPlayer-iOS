@@ -235,6 +235,15 @@ final class NowPlayingManager {
         nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         nowPlayingInfo[MPNowPlayingInfoPropertyIsLiveStream] = false
 
+        // 如果封面 URL 发生改变且不为空，清空旧封面并后台异步请求新封面图片
+        if info.artworkUrl.isEmpty {
+            cachedArtwork = nil
+            currentArtworkUrl = nil
+        } else if info.artworkUrl != currentArtworkUrl {
+            cachedArtwork = nil
+            loadArtwork(from: info.artworkUrl)
+        }
+
         // 复用已缓存的封面，避免重复网络加载，新封面加载完成后会自动无缝替换
         if let cached = cachedArtwork {
             nowPlayingInfo[MPMediaItemPropertyArtwork] = cached
@@ -242,14 +251,6 @@ final class NowPlayingManager {
 
         self.currentInfo = nowPlayingInfo
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
-
-        // 如果封面 URL 发生改变且不为空，后台异步请求封面图片
-        if info.artworkUrl.isEmpty {
-            cachedArtwork = nil
-            currentArtworkUrl = nil
-        } else if info.artworkUrl != currentArtworkUrl {
-            loadArtwork(from: info.artworkUrl)
-        }
     }
 
     /// 异步请求专辑封面图片并生成 MPMediaItemArtwork
@@ -270,18 +271,40 @@ final class NowPlayingManager {
                 return
             }
 
-            // 保持原始高清像素分辨率，支持锁屏点击全屏超清放大与灵动岛展示
-            let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            // 构造具备动态适配尺寸能力的 MPMediaItemArtwork
+            let artwork = MPMediaItemArtwork(boundsSize: image.size) { targetSize in
+                guard targetSize.width > 0, targetSize.height > 0 else {
+                    return image
+                }
+                // 当系统请求尺寸接近或大于原始大图时（如锁屏点击封面全屏展开），直接返回高清原图
+                if targetSize.width >= image.size.width && targetSize.height >= image.size.height {
+                    return image
+                }
+                // 针对控制中心、灵动岛、锁屏未展开小卡片等较小尺寸（如 50x50、60x60、120x120），
+                // 必须根据系统要求的 targetSize 使用 UIGraphicsImageRenderer 动态下采样渲染。
+                // 彻底解决 iOS 控制中心在未展开时因尺寸过大导致封面不显示、点击放大后才显示的问题。
+                let format = UIGraphicsImageRendererFormat.preferred()
+                let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+                return renderer.image { _ in
+                    image.draw(in: CGRect(origin: .zero, size: targetSize))
+                }
+            }
             self.cachedArtwork = artwork
 
             DispatchQueue.main.async {
-                if self.currentArtworkUrl == urlString {
-                    var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? self.currentInfo
-                    info[MPMediaItemPropertyArtwork] = artwork
-                    info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
-                    info[MPNowPlayingInfoPropertyIsLiveStream] = false
-                    self.currentInfo = info
-                    MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+                guard self.currentArtworkUrl == urlString else { return }
+                var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? self.currentInfo
+                info[MPMediaItemPropertyArtwork] = artwork
+                info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+                info[MPNowPlayingInfoPropertyIsLiveStream] = false
+                self.currentInfo = info
+                MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+
+                // 强制触发一次轻量延时通知，确保 SpringBoard 立即捕获新封面，杜绝折叠小卡片空白现象
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    if self.currentArtworkUrl == urlString {
+                        MPNowPlayingInfoCenter.default().nowPlayingInfo = self.currentInfo
+                    }
                 }
             }
         }.resume()

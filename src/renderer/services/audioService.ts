@@ -196,12 +196,14 @@ class AudioService {
       // 将歌手名放置在歌曲名后面（同字号、同粗细、同颜色显示在标题行）
       const combinedTitle = artistsStr ? `${track.name || ''} - ${artistsStr}` : track.name || '';
 
-      // 传递超清封面（降序排列，保证 WebKit 优先选择最高清图），保证锁屏点击放大封面依然超高清显示
+      // 传递完整尺寸梯度的封面（96x96 到 800x800），适配 iOS 控制中心折叠小卡片与锁屏放大超清显示
       const masterArtworkUrl = getTrackCoverUrl(track, '800y800');
       const artwork = [
-        { src: masterArtworkUrl, type: 'image/jpeg', sizes: '800x800' },
-        { src: getTrackCoverUrl(track, '500y500'), type: 'image/jpeg', sizes: '500x500' },
-        { src: getTrackCoverUrl(track, '256y256'), type: 'image/jpeg', sizes: '256x256' }
+        { src: getTrackCoverUrl(track, '96y96'), type: 'image/jpeg', sizes: '96x96' },
+        { src: getTrackCoverUrl(track, '128y128'), type: 'image/jpeg', sizes: '128x128' },
+        { src: getTrackCoverUrl(track, '256y256'), type: 'image/jpeg', sizes: '256x256' },
+        { src: getTrackCoverUrl(track, '512y512'), type: 'image/jpeg', sizes: '512x512' },
+        { src: masterArtworkUrl, type: 'image/jpeg', sizes: '800x800' }
       ];
 
       navigator.mediaSession.metadata = new window.MediaMetadata({

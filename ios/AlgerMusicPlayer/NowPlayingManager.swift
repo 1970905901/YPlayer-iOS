@@ -25,6 +25,7 @@ final class NowPlayingManager {
     private var cachedArtwork: MPMediaItemArtwork?
     private let imageCache = NSCache<NSString, UIImage>()
     private var currentInfo = [String: Any]()
+    private var screenScale: CGFloat = 3.0
 
     private var baseArtist: String = ""
     private var baseTitle: String = ""
@@ -32,6 +33,13 @@ final class NowPlayingManager {
     private var isCurrentlyPlaying: Bool = false
 
     private init() {
+        if Thread.isMainThread {
+            self.screenScale = UIScreen.main.scale
+        } else {
+            DispatchQueue.main.async {
+                self.screenScale = UIScreen.main.scale
+            }
+        }
         setupRemoteCommands()
     }
 
@@ -236,7 +244,7 @@ final class NowPlayingManager {
         nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         nowPlayingInfo[MPNowPlayingInfoPropertyIsLiveStream] = false
 
-        // 如果封面 URL 发生改变且不为空，清空旧封面并请求新封面图片
+        // 如果封面 URL 发生改变且不为空，请求新封面图片
         if info.artworkUrl.isEmpty {
             cachedArtwork = nil
             currentArtworkUrl = nil
@@ -246,7 +254,7 @@ final class NowPlayingManager {
             if let cachedImage = imageCache.object(forKey: info.artworkUrl as NSString) {
                 cachedArtwork = createArtwork(from: cachedImage)
             } else {
-                cachedArtwork = nil
+                // 不立即清空旧 cachedArtwork，等待新封面加载就绪后再替换，杜绝切歌过程出现灰色空白方块
                 loadArtwork(from: info.artworkUrl)
             }
         }
@@ -260,12 +268,37 @@ final class NowPlayingManager {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
     }
 
-    /// 构造具备无损高清渲染能力的 MPMediaItemArtwork
+    /// 构造具备动态尺寸适配与无损 Retina 超采样渲染能力的 MPMediaItemArtwork
     private func createArtwork(from image: UIImage) -> MPMediaItemArtwork {
-        return MPMediaItemArtwork(boundsSize: image.size) { _ in
-            // 返回无损高清图片，由 iOS 系统根据显示场景（锁屏全屏放大、控制中心小卡片、灵动岛）
-            // 自动进行高质量 GPU 抗锯齿超采样渲染，彻底解决锁屏放大或灵动岛封面模糊、不清晰的问题
-            return image
+        let scale = self.screenScale > 0 ? self.screenScale : 3.0
+        return MPMediaItemArtwork(boundsSize: image.size) { targetSize in
+            guard targetSize.width > 0 && targetSize.height > 0 else {
+                return image
+            }
+
+            // 如果系统要求的尺寸恰好与原图一致，直接返回原图
+            if abs(targetSize.width - image.size.width) < 1 && abs(targetSize.height - image.size.height) < 1 {
+                return image
+            }
+
+            // 针对控制中心、灵动岛、锁屏折叠卡片（如 50x50、60x60）以及锁屏展开大图（如 350x350）
+            // 必须使用 UIGraphicsImageRenderer 按系统 targetSize 和主屏 scale (@2x / @3x) 动态渲染。
+            // 既能满足 SpringBoard 的 targetSize 严格校验杜绝灰色空白方块，
+            // 又能在 Retina / Super Retina 屏幕上像素级对齐，呈现 100% 细腻清晰的超清画质！
+            let format = UIGraphicsImageRendererFormat.preferred()
+            format.scale = scale
+            format.opaque = false
+            let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+            return renderer.image { _ in
+                let aspectWidth = targetSize.width / max(1, image.size.width)
+                let aspectHeight = targetSize.height / max(1, image.size.height)
+                let aspectRatio = max(aspectWidth, aspectHeight)
+                let scaledWidth = image.size.width * aspectRatio
+                let scaledHeight = image.size.height * aspectRatio
+                let originX = (targetSize.width - scaledWidth) / 2.0
+                let originY = (targetSize.height - scaledHeight) / 2.0
+                image.draw(in: CGRect(x: originX, y: originY, width: scaledWidth, height: scaledHeight))
+            }
         }
     }
 
@@ -273,7 +306,7 @@ final class NowPlayingManager {
     private func loadArtwork(from urlString: String) {
         currentArtworkUrl = urlString
         let secureUrlString = urlString.replacingOccurrences(of: "^http://", with: "https://", options: .regularExpression)
-        guard let url = URL(string: secureUrlString) else { return }
+        guard let url = URL(string: secureUrlString) ?? URL(string: secureUrlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "") else { return }
 
         // 检查内存缓存
         if let cachedImage = imageCache.object(forKey: urlString as NSString) {
@@ -284,6 +317,9 @@ final class NowPlayingManager {
         var request = URLRequest(url: url)
         request.cachePolicy = .returnCacheDataElseLoad
         request.timeoutInterval = 15
+        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
+        request.setValue("https://music.163.com", forHTTPHeaderField: "Referer")
+        request.setValue("image/webp,image/avif,image/jpeg,image/png,*/*", forHTTPHeaderField: "Accept")
 
         URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
             guard let self = self,

@@ -201,7 +201,9 @@ class AudioService {
       const artwork = [
         { src: masterArtworkUrl, type: 'image/jpeg', sizes: '1024x1024' },
         { src: getTrackCoverUrl(track, '800y800'), type: 'image/jpeg', sizes: '800x800' },
-        { src: getTrackCoverUrl(track, '512y512'), type: 'image/jpeg', sizes: '512x512' }
+        { src: getTrackCoverUrl(track, '512y512'), type: 'image/jpeg', sizes: '512x512' },
+        { src: getTrackCoverUrl(track, '256y256'), type: 'image/jpeg', sizes: '256x256' },
+        { src: getTrackCoverUrl(track, '128y128'), type: 'image/jpeg', sizes: '128x128' }
       ];
 
       navigator.mediaSession.metadata = new window.MediaMetadata({

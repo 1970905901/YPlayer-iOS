@@ -247,13 +247,13 @@ const { playbackRate } = storeToRefs(playerStore);
 const background = ref('#000');
 
 watch(
-  () => playerStore.playMusic,
-  async () => {
-    if (playMusic && playMusic.value && playMusic.value.backgroundColor) {
-      background.value = playMusic.value.backgroundColor as string;
+  () => playerStore.playMusic?.backgroundColor,
+  (newBg) => {
+    if (newBg) {
+      background.value = newBg as string;
     }
   },
-  { immediate: true, deep: true }
+  { immediate: true }
 );
 
 // 节流版本的 seek 函数

@@ -118,11 +118,13 @@ onMounted(() => {
 });
 
 watch(
-  () => playerStore.playMusic,
-  async () => {
-    background.value = playMusic.value.backgroundColor as string;
+  () => playerStore.playMusic?.backgroundColor,
+  (newBg) => {
+    if (newBg) {
+      background.value = newBg as string;
+    }
   },
-  { immediate: true, deep: true }
+  { immediate: true }
 );
 </script>
 

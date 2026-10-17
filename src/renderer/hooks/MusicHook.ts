@@ -305,12 +305,19 @@ const setupAudioListeners = () => {
     }
   };
 
+  const getDynamicIntervalDelay = () => {
+    // 后台播放模式下使用 300ms 间隔，减少 83% 的定时器唤醒与 CPU 占用，极大延长移动端电池续航；
+    // 前台时采用 50ms 间隔，保证逐字歌词与进度条毫秒级流畅。
+    return typeof document !== 'undefined' && document.hidden ? 300 : 50;
+  };
+
   /**
    * 启动进度更新 interval
    * 从 audioService 实时获取 sound 引用，避免闭包中 sound.value 过期
    */
-  const startProgressInterval = () => {
+  const startProgressInterval = (customDelay?: number) => {
     clearInterval();
+    const delay = customDelay ?? getDynamicIntervalDelay();
     interval = window.setInterval(() => {
       try {
         // 每次从 audioService 获取最新的 sound 引用，而不是依赖闭包中的 sound.value
@@ -405,19 +412,23 @@ const setupAudioListeners = () => {
         console.error('进度更新 interval 出错:', error);
         // 出错时不清除 interval，让下一次 tick 继续尝试
       }
-    }, 50);
+    }, delay);
   };
 
   /**
    * 启动播放状态恢复监控
-   * 每 500ms 检查一次：如果 store 认为在播放但 interval 已丢失，则恢复
+   * 仅在正在播放时，低频（1500ms）兜底检测 interval 是否异常丢失
    */
   const startRecoveryMonitor = () => {
     stopRecovery();
     recoveryTimer = window.setInterval(() => {
       try {
         const store = getPlayerStore();
-        if (store.play && !interval) {
+        if (!store.play) {
+          stopRecovery();
+          return;
+        }
+        if (!interval) {
           const currentSound = audioService.getCurrentSound();
           if (currentSound && !currentSound.paused) {
             console.warn('[MusicHook] 检测到播放中但 interval 丢失，自动恢复');
@@ -427,11 +438,18 @@ const setupAudioListeners = () => {
       } catch {
         // 静默忽略
       }
-    }, 500);
+    }, 1500);
   };
 
-  // 启动恢复监控
-  startRecoveryMonitor();
+  // 前后台可见性变化自适应调度（节能模式）
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      const store = getPlayerStore();
+      if (store.play) {
+        startProgressInterval();
+      }
+    });
+  }
 
   // 监听seek开始事件，立即更新UI
   audioService.on('seek_start', (time) => {
@@ -500,6 +518,7 @@ const setupAudioListeners = () => {
       ensureLyricsLoaded();
     }
     startProgressInterval();
+    startRecoveryMonitor();
   });
 
   // 监听暂停
@@ -507,6 +526,7 @@ const setupAudioListeners = () => {
     console.log('音频暂停事件触发');
     getPlayerStore().setPlayMusic(false);
     clearInterval();
+    stopRecovery();
     if (isElectron && isLyricWindowOpen.value) {
       sendLyricToWin();
     }
@@ -539,6 +559,7 @@ const setupAudioListeners = () => {
   audioService.on('end', async () => {
     console.log('音频播放结束事件触发');
     clearInterval();
+    stopRecovery();
 
     if (getPlayerStore().playMode === 1) {
       // 单曲循环模式
@@ -855,6 +876,8 @@ let lyricSyncInterval: any = null;
 
 // 开始歌词同步
 const startLyricSync = () => {
+  if (!isElectron) return;
+
   // 清除已有的定时器
   if (lyricSyncInterval) {
     clearInterval(lyricSyncInterval);

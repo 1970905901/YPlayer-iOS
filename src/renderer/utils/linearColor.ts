@@ -278,6 +278,14 @@ export const animateGradient = (() => {
 
         onUpdate(gradientString);
 
+        if (typeof document !== 'undefined' && document.hidden) {
+          onUpdate(newGradient);
+          isAnimating = false;
+          currentAnimation = null;
+          lastProgress = 0;
+          return null;
+        }
+
         if (rawProgress < 1) {
           currentAnimation = requestAnimationFrame(animateFrame);
           return currentAnimation;

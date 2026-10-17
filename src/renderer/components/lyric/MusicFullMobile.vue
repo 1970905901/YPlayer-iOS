@@ -562,6 +562,8 @@ let scrollRafId: number | null = null;
 
 // 滚动到当前歌词，使用 requestAnimationFrame 节流防掉帧
 const scrollToCurrentLyric = (immediate = false, customScrollerRef?: HTMLElement | null) => {
+  if (!isVisible.value) return;
+
   if (scrollRafId) {
     cancelAnimationFrame(scrollRafId);
   }
@@ -632,21 +634,6 @@ watch(showFullLyrics, (newVal) => {
         scrollToCurrentLyric(true);
       }, 300);
     });
-  }
-});
-
-// 监听音乐播放时间变化，触发歌词滚动更新
-watch(nowTime, () => {
-  // 只有当系统不是由于用户手动拖动进度条而更新时间时才触发滚动
-  if (!isThumbDragging.value && !isTouchScrolling.value) {
-    // 在竖屏全屏歌词模式下滚动
-    if (showFullLyrics.value) {
-      scrollToCurrentLyric(false);
-    }
-    // 在横屏模式下滚动
-    else if (isLandscape.value) {
-      scrollToCurrentLyric(false, landscapeLyricsRef.value);
-    }
   }
 });
 
@@ -1794,7 +1781,9 @@ const getWordStyle = (lineIndex: number, _wordIndex: number, word: any) => {
 // 通用歌词样式
 .lyric-line {
   @apply cursor-pointer font-medium;
-  transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
   font-weight: 500;
   letter-spacing: var(--lyric-letter-spacing, 0);
   line-height: var(--lyric-line-height, 1.6);
@@ -1882,9 +1871,7 @@ const getWordStyle = (lineIndex: number, _wordIndex: number, word: any) => {
   .lyrics-scroller {
     @apply flex-1 overflow-y-auto px-4;
     -webkit-overflow-scrolling: touch;
-    will-change: scroll-position;
     contain: content;
-    transform: translateZ(0);
     mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%);
     -webkit-mask-image: linear-gradient(
       to bottom,

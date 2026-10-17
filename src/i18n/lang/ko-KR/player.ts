@@ -113,7 +113,26 @@ export default {
   // 플레이어 설정
   settings: {
     title: '재생 설정',
-    playbackSpeed: '재생 속도'
+    playbackSpeed: '재생 속도',
+    resourceCache: '리소스 캐시 관리',
+    resourceCacheDesc:
+      '앱에서 로드된 모든 리소스(음악, 커버, 가사, 데이터)의 캐시 용량 제한 및 정리 설정',
+    cacheLimit: '캐시 용량 제한',
+    cacheUsed: '현재 사용 중',
+    clearCache: '지금 정리',
+    clearing: '정리 중...',
+    clearedSuccess: '캐시가 성공적으로 정리되었습니다',
+    autoCleanHint:
+      '용량 초과 시 오래된 캐시를 자동 정리하며, 동일 리소스 업데이트 시 이전 캐시를 자동 삭제합니다',
+    limits: {
+      '128mb': '128MB',
+      '256mb': '256MB',
+      '512mb': '512MB',
+      '1gb': '1GB',
+      '2gb': '2GB',
+      unlimited: '무제한',
+      none: '캐시 안 함'
+    }
   },
   sleepTimer: {
     title: '타이머 종료',

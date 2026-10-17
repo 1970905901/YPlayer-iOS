@@ -173,6 +173,55 @@
                 </button>
               </div>
             </div>
+
+            <!-- 分隔线 -->
+            <div class="h-px bg-white/10 my-5"></div>
+
+            <!-- 资源缓存管理 -->
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-medium text-white/80">
+                    {{ t('player.settings.resourceCache') }}
+                  </span>
+                  <span v-if="cacheUsageText" class="text-xs text-green-400 font-medium">
+                    {{ cacheUsageText }}
+                  </span>
+                </div>
+                <button
+                  @click="handleClearCache"
+                  :disabled="isClearingCache"
+                  class="px-3 py-1 rounded-full text-xs font-medium bg-white/10 text-white/70 hover:bg-white/20 active:bg-white/30 transition-colors disabled:opacity-50"
+                >
+                  {{
+                    isClearingCache
+                      ? t('player.settings.clearing')
+                      : t('player.settings.clearCache')
+                  }}
+                </button>
+              </div>
+
+              <p class="text-xs text-white/40 mb-3">
+                {{ t('player.settings.autoCleanHint') }}
+              </p>
+
+              <!-- 缓存大小限制选择 -->
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="option in cacheLimitOptions"
+                  :key="option.value"
+                  @click="handleSelectCacheLimit(option.value)"
+                  class="px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors"
+                  :class="
+                    currentCacheLimit === option.value
+                      ? 'bg-green-500 text-white shadow-sm'
+                      : 'bg-white/10 text-white/70 hover:bg-white/15'
+                  "
+                >
+                  {{ t(option.labelKey) }}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -185,14 +234,20 @@ import { storeToRefs } from 'pinia';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
+import {
+  CACHE_LIMIT_OPTIONS,
+  type CacheLimitType,
+  resourceCacheService
+} from '@/services/resourceCacheService';
 import { usePlayerStore } from '@/store/modules/player';
+import { showBottomToast } from '@/utils/shortcutToast';
 
 const { t } = useI18n();
 const playerStore = usePlayerStore();
 const { sleepTimer, playbackRate } = storeToRefs(playerStore);
 
 // Props & Emits
-defineProps<{
+const props = defineProps<{
   visible: boolean;
 }>();
 
@@ -332,11 +387,56 @@ onMounted(() => {
   if (hasTimerActive.value && sleepTimer.value.type === 'time') {
     startTimerUpdate();
   }
+  void refreshCacheUsage();
 });
 
 onUnmounted(() => {
   stopTimerUpdate();
 });
+
+// 资源缓存管理
+const cacheLimitOptions = CACHE_LIMIT_OPTIONS;
+const currentCacheLimit = ref<CacheLimitType>(resourceCacheService.getCacheLimit());
+const cacheUsageText = ref<string>('');
+const isClearingCache = ref(false);
+
+const refreshCacheUsage = async () => {
+  try {
+    const stats = await resourceCacheService.getCacheUsage();
+    cacheUsageText.value = `${stats.formattedUsed} / ${stats.formattedLimit}`;
+  } catch {
+    cacheUsageText.value = '';
+  }
+};
+
+const handleSelectCacheLimit = async (limit: CacheLimitType) => {
+  currentCacheLimit.value = limit;
+  await resourceCacheService.setCacheLimit(limit);
+  await refreshCacheUsage();
+};
+
+const handleClearCache = async () => {
+  if (isClearingCache.value) return;
+  isClearingCache.value = true;
+  try {
+    await resourceCacheService.clearAllCache();
+    showBottomToast(t('player.settings.clearedSuccess'));
+    await refreshCacheUsage();
+  } finally {
+    isClearingCache.value = false;
+  }
+};
+
+watch(
+  () => props.visible,
+  (visible) => {
+    if (visible) {
+      currentCacheLimit.value = resourceCacheService.getCacheLimit();
+      void refreshCacheUsage();
+    }
+  },
+  { immediate: true }
+);
 </script>
 
 <style scoped>

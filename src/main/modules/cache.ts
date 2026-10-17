@@ -101,7 +101,7 @@ type CacheEvictionItem = {
 };
 
 const DEFAULT_CACHE_MAX_SIZE_MB = 4096;
-const MIN_CACHE_SIZE_MB = 256;
+const MIN_CACHE_SIZE_MB = 128;
 const MAX_CACHE_SIZE_MB = 102400;
 const DEFAULT_CLEANUP_POLICY: CacheCleanupPolicy = 'lru';
 const CACHE_ROOT_DIR_NAME = 'cache';

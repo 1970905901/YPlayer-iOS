@@ -113,7 +113,26 @@ export default {
   // プレイヤー設定
   settings: {
     title: '再生設定',
-    playbackSpeed: '再生速度'
+    playbackSpeed: '再生速度',
+    resourceCache: 'リソースキャッシュ管理',
+    resourceCacheDesc:
+      'アプリが読み込むすべてのリソース（音楽、カバー、歌詞、データ）のキャッシュ上限と整理設定',
+    cacheLimit: 'キャッシュサイズ制限',
+    cacheUsed: '使用中キャッシュ',
+    clearCache: '今すぐクリア',
+    clearing: 'クリア中...',
+    clearedSuccess: 'キャッシュをクリアしました',
+    autoCleanHint:
+      '上限超過時に古いキャッシュを自動削除し、同一リソース更新時は旧キャッシュを自動破棄します',
+    limits: {
+      '128mb': '128MB',
+      '256mb': '256MB',
+      '512mb': '512MB',
+      '1gb': '1GB',
+      '2gb': '2GB',
+      unlimited: '無制限',
+      none: 'キャッシュしない'
+    }
   },
   // タイマー機能関連
   sleepTimer: {

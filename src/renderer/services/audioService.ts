@@ -1,4 +1,5 @@
 import { nativeBridge } from '@/services/nativeBridge';
+import { resourceCacheService } from '@/services/resourceCacheService';
 import type { AudioOutputDevice } from '@/types/audio';
 import type { SongResult } from '@/types/music';
 import { getTrackCoverUrl, isElectron } from '@/utils';
@@ -286,6 +287,14 @@ class AudioService {
         : (this.currentTrack as any).song?.album?.name;
       // 传递 1024x1024 超清封面，保证控制中心、灵动岛与锁屏放大显示极致清晰
       const picUrl = getTrackCoverUrl(this.currentTrack, '1024y1024');
+      if (picUrl && this.currentTrack.id) {
+        void resourceCacheService.trackResource(
+          `song_cover_${this.currentTrack.id}`,
+          picUrl,
+          0,
+          'cover'
+        );
+      }
 
       const trackDurationSec =
         (this.currentTrack.dt ? this.currentTrack.dt / 1000 : 0) ||

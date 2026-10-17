@@ -39,5 +39,6 @@
   "enableDiskCache": true,
   "diskCacheDir": "",
   "diskCacheMaxSizeMB": 4096,
-  "diskCacheCleanupPolicy": "lru"
+  "diskCacheCleanupPolicy": "lru",
+  "resourceCacheLimit": "512mb"
 }

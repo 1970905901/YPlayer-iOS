@@ -112,7 +112,24 @@ export default {
   // 播放器设置
   settings: {
     title: '播放设置',
-    playbackSpeed: '播放速度'
+    playbackSpeed: '播放速度',
+    resourceCache: '资源缓存管理',
+    resourceCacheDesc: '管理软件所有加载资源（音乐、封面、歌词与数据）的缓存上限与自动清理策略',
+    cacheLimit: '缓存大小限制',
+    cacheUsed: '当前已用缓存',
+    clearCache: '立即清理',
+    clearing: '清理中...',
+    clearedSuccess: '缓存清理成功',
+    autoCleanHint: '超出限制后自动按最早访问时间清理旧缓存，加载同一资源时自动更新并清理旧缓存',
+    limits: {
+      '128mb': '128MB',
+      '256mb': '256MB',
+      '512mb': '512MB',
+      '1gb': '1GB',
+      '2gb': '2GB',
+      unlimited: '无限制',
+      none: '不缓存'
+    }
   },
   // 定时关闭功能相关
   sleepTimer: {

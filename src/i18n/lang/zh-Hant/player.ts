@@ -112,7 +112,24 @@ export default {
   // 播放器設定
   settings: {
     title: '播放設定',
-    playbackSpeed: '播放速度'
+    playbackSpeed: '播放速度',
+    resourceCache: '資源快取管理',
+    resourceCacheDesc: '管理軟體所有載入資源（音樂、封面、歌詞與資料）的快取上限與自動清理策略',
+    cacheLimit: '快取大小限制',
+    cacheUsed: '目前已用快取',
+    clearCache: '立即清理',
+    clearing: '清理中...',
+    clearedSuccess: '快取清理成功',
+    autoCleanHint: '超出限制自動按最早存取時間清理，載入同一資源時自動更新並清理舊快取',
+    limits: {
+      '128mb': '128MB',
+      '256mb': '256MB',
+      '512mb': '512MB',
+      '1gb': '1GB',
+      '2gb': '2GB',
+      unlimited: '無限制',
+      none: '不快取'
+    }
   },
   // 定時關閉功能相關
   sleepTimer: {

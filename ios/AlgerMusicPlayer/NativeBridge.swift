@@ -44,6 +44,12 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         case "updateLyric":
             handleUpdateLyric(payload: body)
 
+        case "clearNativeCache":
+            handleClearNativeCache()
+
+        case "setNativeCacheLimit":
+            handleSetNativeCacheLimit(payload: body)
+
         default:
             print("[NativeBridge] 未知操作类型: \(action)")
         }
@@ -219,5 +225,27 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         let currentTime = payload["currentTime"] as? Double
         let duration = payload["duration"] as? Double
         NowPlayingManager.shared.updateLyric(text: text, currentTime: currentTime, duration: duration)
+    }
+
+    private func handleClearNativeCache() {
+        DispatchQueue.main.async {
+            URLCache.shared.removeAllCachedResponses()
+            NowPlayingManager.shared.clearArtworkCache()
+        }
+    }
+
+    private func handleSetNativeCacheLimit(payload: [String: Any]) {
+        let limitMB = payload["limitMB"] as? Int ?? 512
+        DispatchQueue.main.async {
+            if limitMB <= 0 {
+                URLCache.shared.removeAllCachedResponses()
+                URLCache.shared.memoryCapacity = 0
+                URLCache.shared.diskCapacity = 0
+                NowPlayingManager.shared.clearArtworkCache()
+            } else {
+                URLCache.shared.memoryCapacity = min(limitMB, 64) * 1024 * 1024
+                URLCache.shared.diskCapacity = limitMB * 1024 * 1024
+            }
+        }
     }
 }

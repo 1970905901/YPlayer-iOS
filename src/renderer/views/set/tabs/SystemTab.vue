@@ -36,9 +36,9 @@
         <s-input
           v-model="setData.diskCacheMaxSizeMB"
           type="number"
-          :min="256"
+          :min="128"
           :max="102400"
-          :step="256"
+          :step="128"
           suffix="MB"
           width="w-[160px] max-md:w-32"
         />

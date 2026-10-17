@@ -362,4 +362,11 @@ final class NowPlayingManager {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = self.currentInfo
         }
     }
+
+    /// 清除所有封面图片缓存，响应整软件资源缓存清理或不缓存策略
+    func clearArtworkCache() {
+        imageCache.removeAllObjects()
+        cachedArtwork = nil
+        currentArtworkUrl = nil
+    }
 }

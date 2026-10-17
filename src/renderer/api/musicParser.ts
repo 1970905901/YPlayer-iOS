@@ -1,6 +1,7 @@
 import { cloneDeep } from 'lodash';
 
 import { musicDB } from '@/hooks/MusicHook';
+import { resourceCacheService } from '@/services/resourceCacheService';
 import { SongSourceConfigManager } from '@/services/SongSourceConfigManager';
 import { useSettingsStore } from '@/store';
 import type { SongResult } from '@/types/music';
@@ -56,6 +57,11 @@ export class CacheManager {
     id: number,
     musicSources?: string[]
   ): Promise<MusicParseResult | null> {
+    // 若配置为不缓存，直接跳过缓存命中
+    if (resourceCacheService.getCacheLimit() === 'none') {
+      return null;
+    }
+
     try {
       const cached = await getData('music_url_cache', id);
       if (
@@ -94,6 +100,11 @@ export class CacheManager {
     result: MusicParseResult,
     musicSources?: string[]
   ): Promise<void> {
+    // 若配置为不缓存，直接跳过保存
+    if (resourceCacheService.getCacheLimit() === 'none') {
+      return;
+    }
+
     try {
       // 深度克隆数据，确保可以被 IndexedDB 存储
       await saveData('music_url_cache', {
@@ -102,6 +113,13 @@ export class CacheManager {
         musicSources: cloneDeep(musicSources || []),
         createTime: Date.now()
       });
+
+      // 跟踪资源元数据，自动清理同一歌曲旧URL缓存并检查容量上限
+      const resolvedUrl = result.data?.data?.url;
+      if (resolvedUrl) {
+        void resourceCacheService.trackResource(`song_url_${id}`, resolvedUrl, 0, 'audio');
+      }
+
       console.log(`缓存音乐URL成功: ${id}`);
     } catch (error) {
       console.error('缓存音乐URL失败:', error);

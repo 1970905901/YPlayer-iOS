@@ -113,7 +113,26 @@ export default {
   // Playback settings
   settings: {
     title: 'Playback Settings',
-    playbackSpeed: 'Playback Speed'
+    playbackSpeed: 'Playback Speed',
+    resourceCache: 'Resource Cache Management',
+    resourceCacheDesc:
+      'Manage cache limit and auto-cleanup policy for all loaded resources (music, artwork, lyrics, and data)',
+    cacheLimit: 'Cache Size Limit',
+    cacheUsed: 'Current Cache Used',
+    clearCache: 'Clear Now',
+    clearing: 'Clearing...',
+    clearedSuccess: 'Cache cleared successfully',
+    autoCleanHint:
+      'Automatically purges oldest items when exceeding limit, and clears old cache when updating the same resource',
+    limits: {
+      '128mb': '128MB',
+      '256mb': '256MB',
+      '512mb': '512MB',
+      '1gb': '1GB',
+      '2gb': '2GB',
+      unlimited: 'Unlimited',
+      none: 'No Cache'
+    }
   },
   // Sleep timer related
   sleepTimer: {

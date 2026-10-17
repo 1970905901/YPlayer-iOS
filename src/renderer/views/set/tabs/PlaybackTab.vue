@@ -75,6 +75,31 @@
       >
         <audio-device-settings />
       </setting-item>
+
+      <!-- 资源缓存管理 -->
+      <setting-item
+        :title="t('player.settings.resourceCache')"
+        :description="t('player.settings.resourceCacheDesc')"
+      >
+        <template #action>
+          <div class="flex items-center gap-2 max-md:flex-wrap">
+            <span v-if="cacheUsageText" class="text-xs text-gray-500 whitespace-nowrap">
+              {{ cacheUsageText }}
+            </span>
+            <s-select
+              v-model="currentCacheLimit"
+              :options="cacheLimitSelectOptions"
+              width="w-36 max-md:w-full"
+              @update:value="handleSelectCacheLimit"
+            />
+            <s-btn @click="handleClearCache" :disabled="isClearingCache">
+              {{
+                isClearingCache ? t('player.settings.clearing') : t('player.settings.clearCache')
+              }}
+            </s-btn>
+          </div>
+        </template>
+      </setting-item>
     </setting-section>
 
     <div
@@ -107,9 +132,15 @@ import { useI18n } from 'vue-i18n';
 
 import AudioDeviceSettings from '@/components/settings/AudioDeviceSettings.vue';
 import MusicSourceSettings from '@/components/settings/MusicSourceSettings.vue';
+import {
+  CACHE_LIMIT_OPTIONS,
+  type CacheLimitType,
+  resourceCacheService
+} from '@/services/resourceCacheService';
 import { type Platform } from '@/types/music';
 import { isElectron } from '@/utils';
 import { LYRIC_CONFIG_CHANGE_EVENT, readLyricConfig, writeLyricConfig } from '@/utils/lyricConfig';
+import { showBottomToast } from '@/utils/shortcutToast';
 
 import { SETTINGS_DATA_KEY } from '../keys';
 import SBtn from '../SBtn.vue';
@@ -140,11 +171,51 @@ const handleLyricConfigChange = () => {
 
 onMounted(() => {
   window.addEventListener(LYRIC_CONFIG_CHANGE_EVENT, handleLyricConfigChange);
+  void refreshCacheUsage();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener(LYRIC_CONFIG_CHANGE_EVENT, handleLyricConfigChange);
 });
+
+// 资源缓存管理
+const currentCacheLimit = ref<CacheLimitType>(resourceCacheService.getCacheLimit());
+const cacheUsageText = ref<string>('');
+const isClearingCache = ref(false);
+
+const cacheLimitSelectOptions = computed(() =>
+  CACHE_LIMIT_OPTIONS.map((opt) => ({
+    label: t(opt.labelKey),
+    value: opt.value
+  }))
+);
+
+const refreshCacheUsage = async () => {
+  try {
+    const stats = await resourceCacheService.getCacheUsage();
+    cacheUsageText.value = `${stats.formattedUsed} / ${stats.formattedLimit}`;
+  } catch {
+    cacheUsageText.value = '';
+  }
+};
+
+const handleSelectCacheLimit = async (limit: CacheLimitType) => {
+  currentCacheLimit.value = limit;
+  await resourceCacheService.setCacheLimit(limit);
+  await refreshCacheUsage();
+};
+
+const handleClearCache = async () => {
+  if (isClearingCache.value) return;
+  isClearingCache.value = true;
+  try {
+    await resourceCacheService.clearAllCache();
+    showBottomToast(t('player.settings.clearedSuccess'));
+    await refreshCacheUsage();
+  } finally {
+    isClearingCache.value = false;
+  }
+};
 
 watch(pureModeEnabled, (value) => {
   writeLyricConfig({ ...readLyricConfig(), pureModeEnabled: value });

@@ -221,12 +221,35 @@ const useIndexedDB = <T extends string, S extends Record<T, Record<string, any>>
     });
   };
 
+  // 清空整个表数据
+  const clearStore = async <K extends T>(storeName: K): Promise<void> => {
+    const targetDb = await getDB();
+    return new Promise<void>((resolve, reject) => {
+      try {
+        const tx = targetDb.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        const request = store.clear();
+
+        request.onsuccess = () => {
+          resolve();
+        };
+
+        request.onerror = (event) => {
+          reject((event.target as IDBRequest).error);
+        };
+      } catch (err) {
+        reject(err);
+      }
+    });
+  };
+
   return {
     initDB,
     addData,
     saveData,
     getData,
     deleteData,
+    clearStore,
     getAllData,
     getDataWithPagination
   };

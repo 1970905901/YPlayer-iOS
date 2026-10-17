@@ -110,6 +110,22 @@ class NativeBridge {
   }
 
   /**
+   * 清除 iOS 原生 URLCache 与锁屏封面缓存
+   */
+  public clearNativeCache() {
+    if (!this.isIOS) return;
+    this.postMessage('clearNativeCache');
+  }
+
+  /**
+   * 设置 iOS 原生网络与资源缓存上限
+   */
+  public setNativeCacheLimit(limitMB: number) {
+    if (!this.isIOS) return;
+    this.postMessage('setNativeCacheLimit', { limitMB });
+  }
+
+  /**
    * 处理来自 iOS 原生锁屏/AirPods/Apple Watch 的远程命令
    */
   private async dispatchRemoteCommand(command: string, arg?: any) {

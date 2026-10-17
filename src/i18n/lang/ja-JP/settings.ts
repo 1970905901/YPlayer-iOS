@@ -283,6 +283,8 @@ export default {
     gotoGithub: 'Githubへ',
     author: '作者',
     authorDesc: 'algerkong スターを付けてください🌟',
+    telegram: 'Telegram グループ',
+    gotoTelegram: 'Telegram を開く',
     messages: {
       checkError: '更新確認に失敗しました。後でもう一度お試しください'
     }

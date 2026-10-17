@@ -284,6 +284,8 @@ export default {
     gotoGithub: 'Go to Github',
     author: 'Author',
     authorDesc: 'algerkong Give a star🌟',
+    telegram: 'Telegram Group',
+    gotoTelegram: 'Open Telegram',
     messages: {
       checkError: 'Failed to check for updates, please try again later'
     }

@@ -33,6 +33,17 @@
         <i class="ri-github-line mr-1"></i>{{ t('settings.about.gotoGithub') }}
       </s-btn>
     </setting-item>
+
+    <setting-item
+      :title="t('settings.about.telegram')"
+      description="https://t.me/YPlayerGroup"
+      clickable
+      @click="openTelegram"
+    >
+      <s-btn @click.stop="openTelegram">
+        <i class="ri-telegram-line mr-1"></i>{{ t('settings.about.gotoTelegram') }}
+      </s-btn>
+    </setting-item>
   </setting-section>
 </template>
 
@@ -157,6 +168,18 @@ const openAuthor = () => {
     return;
   }
   window.open(repoUrl, '_blank');
+};
+
+const openTelegram = () => {
+  const telegramUrl = 'https://t.me/YPlayerGroup';
+  if ((window as any).webkit?.messageHandlers?.nativePlayer) {
+    (window as any).webkit.messageHandlers.nativePlayer.postMessage({
+      action: 'openExternalUrl',
+      url: telegramUrl
+    });
+    return;
+  }
+  window.open(telegramUrl, '_blank');
 };
 
 defineExpose({ checkForUpdates });

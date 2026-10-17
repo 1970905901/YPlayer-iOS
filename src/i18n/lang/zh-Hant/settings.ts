@@ -275,6 +275,8 @@ export default {
     gotoGithub: '前往 Github',
     author: '作者',
     authorDesc: 'algerkong 點個star🌟呗',
+    telegram: 'Telegram 交流群',
+    gotoTelegram: '前往 Telegram',
     messages: {
       checkError: '檢查更新失敗，請稍後重試'
     }

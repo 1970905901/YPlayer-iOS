@@ -167,7 +167,7 @@ class AudioService {
     this.currentLyric = trimmed;
 
     try {
-      if (!nativeBridge.isIOS && 'mediaSession' in navigator && navigator.mediaSession.metadata) {
+      if ('mediaSession' in navigator && navigator.mediaSession.metadata) {
         // 歌词单独展示在副标题位置，不添加歌手名（歌手名已合并至标题行，保持同字号、同粗细、同颜色）
         const artists = this.currentTrack?.ar
           ? this.currentTrack.ar.map((a: any) => a.name)
@@ -201,28 +201,29 @@ class AudioService {
       // 将歌手名放置在歌曲名后面（同字号、同粗细、同颜色显示在标题行）
       const combinedTitle = artistsStr ? `${track.name || ''} - ${artistsStr}` : track.name || '';
 
-      // 传递高清封面：使用 NetEase 支持最好的 500y500 尺寸和标准 iOS 媒体尺寸
-      const coverUrl500 = getTrackCoverUrl(track, '500y500');
-      const coverUrl300 = getTrackCoverUrl(track, '300y300');
-      const coverUrl100 = getTrackCoverUrl(track, '100y100');
-      const rawCoverUrl = getTrackCoverUrl(track, 'raw');
+      // 传递高清封面：使用 NetEase 支持最好的精确尺寸梯度，适配 iOS 控制中心小卡片与锁屏全屏超清大图
+      const coverUrl96 = getTrackCoverUrl(track, '96y96');
+      const coverUrl128 = getTrackCoverUrl(track, '128y128');
+      const coverUrl256 = getTrackCoverUrl(track, '256y256');
+      const coverUrl384 = getTrackCoverUrl(track, '384y384');
+      const coverUrl512 = getTrackCoverUrl(track, '512y512');
+      const coverUrl800 = getTrackCoverUrl(track, '800y800');
 
       const artwork = [
-        { src: coverUrl500, type: 'image/jpeg', sizes: '512x512' },
-        { src: coverUrl300, type: 'image/jpeg', sizes: '256x256' },
-        { src: coverUrl100, type: 'image/jpeg', sizes: '128x128' },
-        { src: coverUrl100, type: 'image/jpeg', sizes: '96x96' },
-        { src: rawCoverUrl, sizes: '512x512', type: 'image/jpeg' }
+        { src: coverUrl96, type: 'image/jpeg', sizes: '96x96' },
+        { src: coverUrl128, type: 'image/jpeg', sizes: '128x128' },
+        { src: coverUrl256, type: 'image/jpeg', sizes: '256x256' },
+        { src: coverUrl384, type: 'image/jpeg', sizes: '384x384' },
+        { src: coverUrl512, type: 'image/jpeg', sizes: '512x512' },
+        { src: coverUrl800, type: 'image/jpeg', sizes: '800x800' }
       ];
 
-      if (!nativeBridge.isIOS) {
-        navigator.mediaSession.metadata = new window.MediaMetadata({
-          title: combinedTitle,
-          artist: this.currentLyric || artistsStr || ' ', // 优先展示实时歌词，无歌词时回退歌手名，避免空字符串触发系统置灰
-          album: album || '',
-          artwork
-        });
-      }
+      navigator.mediaSession.metadata = new window.MediaMetadata({
+        title: combinedTitle,
+        artist: this.currentLyric || artistsStr || ' ', // 优先展示实时歌词，无歌词时回退歌手名，避免空字符串触发系统置灰
+        album: album || '',
+        artwork
+      });
 
       // 每次切换歌曲时再次确保禁用 15 秒快进快退，激活上一首/下一首/播放/暂停核心交互
       try {
@@ -259,7 +260,7 @@ class AudioService {
   }
 
   private updateMediaSessionState(isPlaying: boolean) {
-    if (!nativeBridge.isIOS && 'mediaSession' in navigator) {
+    if ('mediaSession' in navigator) {
       navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
     }
     this.updateMediaSessionPositionState();
@@ -268,12 +269,7 @@ class AudioService {
 
   private updateMediaSessionPositionState() {
     try {
-      if (
-        !nativeBridge.isIOS &&
-        'mediaSession' in navigator &&
-        this.audio.duration &&
-        isFinite(this.audio.duration)
-      ) {
+      if ('mediaSession' in navigator && this.audio.duration && isFinite(this.audio.duration)) {
         if ('setPositionState' in navigator.mediaSession) {
           navigator.mediaSession.setPositionState({
             duration: this.audio.duration,

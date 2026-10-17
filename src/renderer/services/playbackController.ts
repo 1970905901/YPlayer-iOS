@@ -138,12 +138,14 @@ const triggerPreload = async (song: SongResult): Promise<void> => {
  * 更新文档标题
  */
 const updateDocumentTitle = (music: SongResult): void => {
-  let title = music.name;
-  if (music.source === 'netease' && music?.song?.artists) {
-    title += ` - ${music.song.artists.reduce(
-      (prev: string, curr: any) => `${prev}${curr.name}/`,
-      ''
-    )}`;
+  let title = music.name || '';
+  const artists = music.ar
+    ? music.ar.map((a: any) => a.name).join(' / ')
+    : (music as any).song?.artists
+      ? (music as any).song.artists.map((a: any) => a.name).join(' / ')
+      : '';
+  if (artists) {
+    title += ` - ${artists}`;
   }
   document.title = title;
 };

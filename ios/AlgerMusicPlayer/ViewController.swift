@@ -11,6 +11,15 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         return currentStatusBarStyle
     }
 
+    override var canBecomeFirstResponder: Bool {
+        return true
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        becomeFirstResponder()
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         setupViews()

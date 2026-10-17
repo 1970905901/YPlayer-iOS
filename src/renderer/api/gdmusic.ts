@@ -1,5 +1,7 @@
 import axios from 'axios';
 
+import { nativeHttpRequest } from '@/api/ncmDirect/nativeHttp';
+import { nativeBridge } from '@/services/nativeBridge';
 import type { MusicSourceType } from '@/types/music';
 
 /**
@@ -227,6 +229,24 @@ const pickBestCandidate = (
   return best;
 };
 
+const httpGet = async (url: string, timeout = 5000): Promise<{ data: any }> => {
+  if (nativeBridge.isIOS) {
+    try {
+      const res = await nativeHttpRequest({ url, method: 'GET', timeout });
+      let data: any = res.data;
+      try {
+        data = JSON.parse(res.data);
+      } catch {
+        // keep text
+      }
+      return { data };
+    } catch (e) {
+      console.warn('[GDMusic] nativeHttpRequest failed, falling back to axios:', e);
+    }
+  }
+  return await axios.get(url, { timeout });
+};
+
 /**
  * 在指定音源搜索歌曲并获取URL
  * @param source 音源
@@ -245,7 +265,7 @@ async function searchAndGetUrl(
   const searchUrl = `${baseUrl}?types=search&source=${source}&name=${encodeURIComponent(searchQuery)}&count=5&pages=1`;
   console.log(`GD音乐台尝试音源 ${source} 搜索:`, searchUrl);
 
-  const searchResponse = await axios.get(searchUrl, { timeout: 5000 });
+  const searchResponse = await httpGet(searchUrl, 5000);
 
   if (searchResponse.data && Array.isArray(searchResponse.data) && searchResponse.data.length > 0) {
     const matchedResult = pickBestCandidate(searchResponse.data as GDSearchItem[], expected);
@@ -261,7 +281,7 @@ async function searchAndGetUrl(
     const songUrl = `${baseUrl}?types=url&source=${trackSource}&id=${trackId}&br=${quality}`;
     console.log(`GD音乐台尝试获取 ${trackSource} 歌曲URL:`, songUrl);
 
-    const songResponse = await axios.get(songUrl, { timeout: 5000 });
+    const songResponse = await httpGet(songUrl, 5000);
 
     if (songResponse.data && songResponse.data.url) {
       return {

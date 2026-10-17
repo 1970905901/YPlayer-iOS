@@ -387,6 +387,7 @@ class UnblockMusicStrategy implements MusicSourceStrategy {
   priority = 4;
 
   canHandle(sources: string[]): boolean {
+    if (!isElectron) return false;
     const unblockSources = sources.filter((source) => !['custom', 'gdmusic'].includes(source));
     return unblockSources.length > 0;
   }
@@ -513,12 +514,6 @@ export class MusicParser {
     const startTime = performance.now();
 
     try {
-      // 非Electron环境不支持本地解析
-      if (!isElectron) {
-        console.log('非Electron环境，不支持音乐解析');
-        return buildFailedResult('当前环境不支持音乐解析');
-      }
-
       // 获取设置存储
       let settingsStore: any;
       try {

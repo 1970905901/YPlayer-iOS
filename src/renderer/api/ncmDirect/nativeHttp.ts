@@ -4,11 +4,12 @@ export interface NativeHttpResponse {
   id: string;
   status: number;
   data: string;
+  headers?: Record<string, string>;
   error?: string | null;
 }
 
 interface PendingHandler {
-  resolve: (res: { status: number; data: string }) => void;
+  resolve: (res: { status: number; data: string; headers?: Record<string, string> }) => void;
   reject: (err: any) => void;
   timer: any;
 }
@@ -28,7 +29,8 @@ if (typeof window !== 'undefined' && !(window as any).__nativeHttpInitialized) {
       } else {
         handler.resolve({
           status: resp.status || 200,
-          data: resp.data
+          data: resp.data,
+          headers: resp.headers || {}
         });
       }
     }
@@ -41,7 +43,7 @@ export const nativeHttpRequest = (options: {
   headers?: Record<string, string>;
   data?: string;
   timeout?: number;
-}): Promise<{ status: number; data: string }> => {
+}): Promise<{ status: number; data: string; headers?: Record<string, string> }> => {
   return new Promise((resolve, reject) => {
     const id = 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
     const timeout = options.timeout || 20000;
@@ -56,7 +58,11 @@ export const nativeHttpRequest = (options: {
     pendingRequests.set(id, { resolve, reject, timer });
 
     // iOS WKWebView Bridge
-    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativePlayer) {
+    if (
+      window.webkit &&
+      window.webkit.messageHandlers &&
+      window.webkit.messageHandlers.nativePlayer
+    ) {
       window.webkit.messageHandlers.nativePlayer.postMessage({
         action: 'httpRequest',
         id,
@@ -78,9 +84,14 @@ export const nativeHttpRequest = (options: {
         clearTimeout(timer);
         pendingRequests.delete(id);
         const text = await response.text();
+        const headers: Record<string, string> = {};
+        response.headers.forEach((v, k) => {
+          headers[k.toLowerCase()] = v;
+        });
         resolve({
           status: response.status,
-          data: text
+          data: text,
+          headers
         });
       })
       .catch((err) => {

@@ -184,12 +184,14 @@ class AudioService {
       // 将歌手名放置在歌曲名后面（同字号、同粗细、同颜色显示在标题行）
       const combinedTitle = artistsStr ? `${track.name || ''} - ${artistsStr}` : track.name || '';
 
-      // 提供最高 1200x1200HD 封面，保证锁屏点击放大封面依然超高清显示
-      const artwork = ['96', '128', '256', '512', '1024', '1200'].map((size) => ({
-        src: getTrackCoverUrl(track, `${size}y${size}`),
-        type: 'image/jpeg',
-        sizes: `${size}x${size}`
-      }));
+      // 传递最高超清封面（降序排列，保证 WebKit 优先选择最高清图），保证锁屏点击放大封面依然超高清显示
+      const masterArtworkUrl = getTrackCoverUrl(track, '');
+      const artwork = [
+        { src: masterArtworkUrl, type: 'image/jpeg', sizes: '1400x1400' },
+        { src: getTrackCoverUrl(track, '1200y1200'), type: 'image/jpeg', sizes: '1200x1200' },
+        { src: getTrackCoverUrl(track, '512y512'), type: 'image/jpeg', sizes: '512x512' },
+        { src: getTrackCoverUrl(track, '256y256'), type: 'image/jpeg', sizes: '256x256' }
+      ];
 
       navigator.mediaSession.metadata = new window.MediaMetadata({
         title: combinedTitle,
@@ -258,13 +260,21 @@ class AudioService {
       // 传递无压缩原图 Master 超清封面图片，点击锁屏封面放大后极致清晰
       const picUrl = getTrackCoverUrl(this.currentTrack, '');
 
+      const trackDurationSec =
+        (this.currentTrack.dt ? this.currentTrack.dt / 1000 : 0) ||
+        ((this.currentTrack as any).duration ? (this.currentTrack as any).duration / 1000 : 0);
+      const duration =
+        isFinite(this.audio.duration) && this.audio.duration > 0
+          ? this.audio.duration
+          : trackDurationSec;
+
       nativeBridge.updatePlayState({
         isPlaying: isPlaying !== undefined ? isPlaying : !this.audio.paused,
         title: this.currentTrack.name || '',
         artist: artists ? artists.join(', ') : '',
         album: album || '',
         artworkUrl: picUrl,
-        duration: isFinite(this.audio.duration) ? this.audio.duration : 0,
+        duration: duration > 0 ? duration : 0,
         currentTime: isFinite(this.audio.currentTime) ? this.audio.currentTime : 0,
         playbackRate: this.playbackRate
       });

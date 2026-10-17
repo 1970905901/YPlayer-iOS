@@ -122,20 +122,34 @@ class NativeBridge {
 
       switch (command) {
         case 'play':
-          audioService.resume();
-          playerStore.play = true;
+          if (audioService.getCurrentSound()?.src) {
+            audioService.resume();
+            playerStore.setIsPlay(true);
+            playerStore.userPlayIntent = true;
+          } else if (playerStore.playMusic?.id) {
+            const { playTrack } = await import('@/services/playbackController');
+            await playTrack(playerStore.playMusic, true);
+          }
           break;
         case 'pause':
           audioService.pause();
-          playerStore.play = false;
+          playerStore.setIsPlay(false);
+          playerStore.userPlayIntent = false;
           break;
         case 'togglePlayPause':
           if (playerStore.play) {
             audioService.pause();
-            playerStore.play = false;
+            playerStore.setIsPlay(false);
+            playerStore.userPlayIntent = false;
           } else {
-            audioService.resume();
-            playerStore.play = true;
+            if (audioService.getCurrentSound()?.src) {
+              audioService.resume();
+              playerStore.setIsPlay(true);
+              playerStore.userPlayIntent = true;
+            } else if (playerStore.playMusic?.id) {
+              const { playTrack } = await import('@/services/playbackController');
+              await playTrack(playerStore.playMusic, true);
+            }
           }
           break;
         case 'nextTrack':

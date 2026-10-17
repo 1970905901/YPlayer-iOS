@@ -66,7 +66,10 @@ final class AudioSessionManager {
 
         switch type {
         case .began:
-            print("[AudioSessionManager] 音频被打断，暂停播放")
+            if let wasSuspended = userInfo[AVAudioSessionInterruptionWasSuspendedKey] as? Bool, wasSuspended {
+                return
+            }
+            print("[AudioSessionManager] 外部音频被打断，暂停播放")
             NowPlayingManager.shared.dispatchRemoteCommand("pause")
         case .ended:
             if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {

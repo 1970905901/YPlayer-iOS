@@ -168,14 +168,23 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         }
 
         let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? (error == nil ? 200 : 500)
+            let httpResponse = response as? HTTPURLResponse
+            let statusCode = httpResponse?.statusCode ?? (error == nil ? 200 : 500)
             let bodyString = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
             let errorMsg = error?.localizedDescription
+
+            var responseHeaders: [String: String] = [:]
+            if let allHeaders = httpResponse?.allHeaderFields {
+                for (k, v) in allHeaders {
+                    responseHeaders[String(describing: k).lowercased()] = String(describing: v)
+                }
+            }
 
             var responsePayload: [String: Any] = [
                 "id": reqId,
                 "status": statusCode,
-                "data": bodyString
+                "data": bodyString,
+                "headers": responseHeaders
             ]
             if let errorMsg = errorMsg {
                 responsePayload["error"] = errorMsg

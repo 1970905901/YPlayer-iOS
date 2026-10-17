@@ -8,6 +8,8 @@
  * 4. 处理初始化和音乐解析请求
  */
 
+import { nativeHttpRequest } from '@/api/ncmDirect/nativeHttp';
+import { nativeBridge } from '@/services/nativeBridge';
 import type {
   LxInitedData,
   LxLyricResult,
@@ -411,6 +413,62 @@ export class LxMusicSourceRunner {
 
       return () => {
         void window.api?.lxMusicHttpCancel?.(requestId);
+      };
+    }
+
+    if (nativeBridge.isIOS) {
+      let cancelled = false;
+      let bodyData: string | undefined = undefined;
+      if (options.body) {
+        bodyData = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
+      } else if (options.form) {
+        bodyData = new URLSearchParams(options.form).toString();
+      }
+
+      nativeHttpRequest({
+        url,
+        method: options.method || 'GET',
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko)',
+          ...options.headers
+        },
+        data: bodyData,
+        timeout
+      })
+        .then((res) => {
+          if (cancelled) return;
+          const rawBody = res.data;
+          let parsedBody: any = rawBody;
+          const contentType = res.headers?.['content-type'] || '';
+          if (
+            contentType.includes('application/json') ||
+            rawBody.startsWith('{') ||
+            rawBody.startsWith('[')
+          ) {
+            try {
+              parsedBody = JSON.parse(rawBody);
+            } catch {
+              // keep raw text
+            }
+          }
+          callback(
+            null,
+            {
+              statusCode: res.status,
+              headers: res.headers || {},
+              body: parsedBody
+            },
+            parsedBody
+          );
+        })
+        .catch((error: Error) => {
+          if (cancelled) return;
+          callback(error, null, null);
+        });
+
+      return () => {
+        cancelled = true;
       };
     }
 

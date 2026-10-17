@@ -4,7 +4,9 @@
  * 实现 MusicSourceStrategy 接口，作为落雪音源的解析入口
  */
 
+import { nativeHttpRequest } from '@/api/ncmDirect/nativeHttp';
 import { getLxMusicRunner, initLxMusicRunner } from '@/services/LxMusicSourceRunner';
+import { nativeBridge } from '@/services/nativeBridge';
 import { useSettingsStore } from '@/store';
 import type { LxMusicInfo, LxQuality, LxSourceKey } from '@/types/lxMusic';
 import { LX_SOURCE_NAMES, QUALITY_TO_LX } from '@/types/lxMusic';
@@ -33,8 +35,52 @@ const resolveAudioUrl = async (url: string): Promise<string | null> => {
 
   console.log('[LxMusicStrategy] 检测到 API 端点，尝试解析真实 URL:', url);
 
-  // 非 Electron 环境无法绕过 CORS 验证，保持乐观返回
+  // 非 Electron 环境尝试使用 iOS 原生隧道绕过 CORS
   if (typeof window.api?.lxMusicHttpRequest !== 'function') {
+    if (nativeBridge.isIOS) {
+      try {
+        const response = await nativeHttpRequest({
+          url,
+          method: 'GET',
+          headers: { Range: 'bytes=0-8191' },
+          timeout: 15000
+        });
+
+        const status = response?.status ?? 0;
+        const contentType = String(response?.headers?.['content-type'] || '');
+
+        if (status < 200 || status >= 400) {
+          console.warn(`[LxMusicStrategy] API 端点返回 ${status}，判定解析失败`);
+          return null;
+        }
+
+        if (contentType.includes('audio/') || contentType.includes('application/octet-stream')) {
+          console.log('[LxMusicStrategy] API 端点为音频流，直接使用原始 URL');
+          return url;
+        }
+
+        const dataStr = response?.data;
+        if (dataStr) {
+          try {
+            const body = JSON.parse(dataStr);
+            if (body && typeof body === 'object') {
+              const audioUrl =
+                body.url || body.data?.url || body.audio_url || body.link || body.src;
+              if (audioUrl && typeof audioUrl === 'string') {
+                console.log('[LxMusicStrategy] 从 JSON 中提取音频 URL:', audioUrl);
+                return audioUrl;
+              }
+            }
+          } catch {
+            return url;
+          }
+        }
+        return url;
+      } catch (error) {
+        console.error('[LxMusicStrategy] iOS 原生隧道请求失败:', error);
+        return null;
+      }
+    }
     return url;
   }
 

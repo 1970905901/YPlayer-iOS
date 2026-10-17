@@ -294,6 +294,7 @@ import {
   parseScriptInfo,
   setLxMusicRunner
 } from '@/services/LxMusicSourceRunner';
+import { nativeBridge } from '@/services/nativeBridge';
 import { useSettingsStore } from '@/store';
 import type { LxMusicScriptConfig, LxScriptInfo, LxSourceKey } from '@/types/lxMusic';
 import { type Platform } from '@/types/music';
@@ -412,7 +413,7 @@ const pickLocalFile = (accept: string): Promise<{ name: string; content: string 
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = accept;
+    input.accept = nativeBridge.isIOS ? '*/*' : accept;
     input.style.display = 'none';
     input.onchange = () => {
       const file = input.files?.[0];

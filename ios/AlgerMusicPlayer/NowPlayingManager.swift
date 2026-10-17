@@ -149,6 +149,9 @@ final class NowPlayingManager {
             }
             info[MPNowPlayingInfoPropertyPlaybackRate] = self.isCurrentlyPlaying ? 1.0 : 0.0
             info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
+            if let cached = self.cachedArtwork {
+                info[MPMediaItemPropertyArtwork] = cached
+            }
             self.currentInfo = info
             MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         }
@@ -161,11 +164,6 @@ final class NowPlayingManager {
         currentLyric = ""
         isCurrentlyPlaying = info.isPlaying
 
-        // 保持系统音频会话激活状态，防止控制中心与灵动岛灰显
-        if info.isPlaying {
-            try? AVAudioSession.sharedInstance().setActive(true)
-        }
-
         enforceRemoteCommands()
 
         var nowPlayingInfo = [String: Any]()
@@ -175,13 +173,15 @@ final class NowPlayingManager {
         nowPlayingInfo[MPMediaItemPropertyTitle] = combinedTitle
         nowPlayingInfo[MPMediaItemPropertyArtist] = "" // 专属预留给动态滚动的单句歌词
         nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = info.album
-        nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = info.duration
-        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = info.currentTime
+        if info.duration > 0 {
+            nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = info.duration
+        }
+        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = max(0, info.currentTime)
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = info.isPlaying ? (info.playbackRate > 0 ? info.playbackRate : 1.0) : 0.0
         nowPlayingInfo[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
 
         // 复用已缓存的封面，避免重复网络加载
-        if let cached = cachedArtwork, currentArtworkUrl == info.artworkUrl {
+        if let cached = cachedArtwork {
             nowPlayingInfo[MPMediaItemPropertyArtwork] = cached
         }
 
@@ -211,10 +211,8 @@ final class NowPlayingManager {
                 return
             }
 
-            let pixelWidth = max(image.size.width * (image.scale > 0 ? image.scale : 1.0), 1400)
-            let pixelHeight = max(image.size.height * (image.scale > 0 ? image.scale : 1.0), 1400)
-            let boundsSize = CGSize(width: pixelWidth, height: pixelHeight)
-            let artwork = MPMediaItemArtwork(boundsSize: boundsSize) { _ in image }
+            // 保持原始高清像素分辨率，支持锁屏点击全屏超清放大与灵动岛展示
+            let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
             self.cachedArtwork = artwork
 
             DispatchQueue.main.async {

@@ -49,5 +49,7 @@ export default {
     loadFailed: 'Failed to load user page',
     deleteSuccess: 'Successfully deleted',
     deleteFailed: 'Failed to delete'
-  }
+  },
+  logout: 'Log Out',
+  logoutConfirm: 'Are you sure you want to log out of your NetEase account?'
 };

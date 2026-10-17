@@ -49,5 +49,7 @@ export default {
     loadFailed: '加载用户页面失败',
     deleteSuccess: '删除成功',
     deleteFailed: '删除失败'
-  }
+  },
+  logout: '退出登录',
+  logoutConfirm: '确定要退出当前网易云账号吗？'
 };

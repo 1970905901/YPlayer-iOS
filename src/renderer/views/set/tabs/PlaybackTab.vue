@@ -91,6 +91,7 @@
               :options="cacheLimitSelectOptions"
               width="w-36 max-md:w-full"
               @update:value="handleSelectCacheLimit"
+              @change="handleSelectCacheLimit"
             />
             <s-btn @click="handleClearCache" :disabled="isClearingCache">
               {{
@@ -199,7 +200,7 @@ const refreshCacheUsage = async () => {
   }
 };
 
-const handleSelectCacheLimit = async (limit: CacheLimitType) => {
+const handleSelectCacheLimit = async (limit: any) => {
   currentCacheLimit.value = limit;
   await resourceCacheService.setCacheLimit(limit);
   await refreshCacheUsage();
@@ -219,6 +220,12 @@ const handleClearCache = async () => {
 
 watch(pureModeEnabled, (value) => {
   writeLyricConfig({ ...readLyricConfig(), pureModeEnabled: value });
+});
+
+watch(currentCacheLimit, async (limit) => {
+  if (limit && limit !== resourceCacheService.getCacheLimit()) {
+    await handleSelectCacheLimit(limit as CacheLimitType);
+  }
 });
 
 const qualityOptions = computed(() => [

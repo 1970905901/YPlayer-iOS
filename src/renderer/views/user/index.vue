@@ -61,11 +61,22 @@
         :style="{ backgroundImage: `url(${getImgUrl(user.backgroundUrl)})` }"
       >
         <div class="page">
-          <div class="user-name">
-            <span>{{ user.nickname }}</span>
-            <span v-if="currentLoginType" class="login-type">{{
-              t('login.title.' + currentLoginType)
-            }}</span>
+          <div class="user-name items-center">
+            <div class="flex items-center gap-2 min-w-0 flex-1 mr-3">
+              <span class="truncate text-white">{{ user.nickname }}</span>
+              <span
+                v-if="currentLoginType"
+                class="login-type flex-shrink-0 text-xs px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-400"
+                >{{ t('login.title.' + currentLoginType) }}</span
+              >
+            </div>
+            <button
+              class="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium text-white/90 bg-white/15 hover:bg-red-500/20 hover:text-red-300 hover:border-red-400/30 active:scale-95 transition-all backdrop-blur-sm border border-white/20 shrink-0 cursor-pointer"
+              @click="handleLogoutClick"
+            >
+              <i class="ri-logout-box-r-line text-sm"></i>
+              <span>{{ t('user.logout') }}</span>
+            </button>
           </div>
           <div class="user-info">
             <n-avatar round :size="50" :src="getImgUrl(user.avatarUrl, '50y50')" />
@@ -175,7 +186,7 @@
 </template>
 
 <script lang="ts" setup>
-import { useMessage } from 'naive-ui';
+import { useDialog, useMessage } from 'naive-ui';
 import { storeToRefs } from 'pinia';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -204,6 +215,7 @@ const infoLoading = ref(false);
 const albumLoading = ref(false);
 const mounted = ref(true);
 const message = useMessage();
+const dialog = useDialog();
 
 // Tab 相关
 const tabs = [
@@ -467,6 +479,18 @@ const handleLoginSuccess = (userProfile?: any, loginType?: string) => {
 
 const isLoggedIn = computed(() => userStore.user);
 const currentLoginType = computed(() => userStore.loginType);
+
+const handleLogoutClick = () => {
+  dialog.warning({
+    title: t('user.logout'),
+    content: t('user.logoutConfirm'),
+    positiveText: t('common.confirm'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: async () => {
+      await userStore.handleLogout();
+    }
+  });
+};
 </script>
 
 <style lang="scss" scoped>

@@ -84,7 +84,7 @@ const layoutRouter = [
     name: 'history',
     component: () => import('@/views/historyAndFavorite/index.vue'),
     meta: {
-      title: 'comp.history',
+      title: 'history.title',
       icon: 'icon-a-TicketStar',
       keepAlive: true,
       isMobile: true

@@ -49,5 +49,7 @@ export default {
     loadFailed: 'ユーザーページの読み込みに失敗しました',
     deleteSuccess: '削除成功',
     deleteFailed: '削除失敗'
-  }
+  },
+  logout: 'ログアウト',
+  logoutConfirm: 'NetEaseアカウントからログアウトしますか？'
 };

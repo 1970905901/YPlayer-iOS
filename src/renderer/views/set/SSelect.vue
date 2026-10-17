@@ -32,20 +32,21 @@
     >
       <div
         v-if="isOpen"
-        class="absolute z-50 mt-1.5 w-full min-w-[160px] overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
+        class="absolute right-0 z-[999] mt-1.5 min-w-full w-max max-w-[calc(100vw-32px)] overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl dark:border-neutral-700 dark:bg-neutral-900"
         :class="dropdownPosition === 'top' ? 'bottom-full mb-1.5 mt-0' : ''"
       >
-        <div class="max-h-[240px] overflow-y-auto py-1">
+        <div class="max-h-[260px] overflow-y-auto py-1 overscroll-contain">
           <div
             v-for="opt in options"
             :key="String(opt.value)"
-            class="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm transition-colors"
+            style="touch-action: manipulation; -webkit-tap-highlight-color: transparent"
+            class="flex cursor-pointer items-center gap-2 px-3.5 py-2.5 text-sm transition-colors active:bg-neutral-100 dark:active:bg-neutral-800"
             :class="
               opt.value === modelValue
                 ? 'bg-primary/10 text-primary font-medium'
                 : 'text-neutral-700 hover:bg-neutral-50 dark:text-neutral-300 dark:hover:bg-neutral-800'
             "
-            @click="select(opt.value)"
+            @click.stop="select(opt.value)"
           >
             <span class="truncate flex-1">{{ opt.label }}</span>
             <i
@@ -85,6 +86,8 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   'update:modelValue': [value: OptionValue];
+  'update:value': [value: OptionValue];
+  change: [value: OptionValue];
 }>();
 
 const isOpen = ref(false);
@@ -108,6 +111,8 @@ const toggle = () => {
 
 const select = (value: OptionValue) => {
   emit('update:modelValue', value);
+  emit('update:value', value);
+  emit('change', value);
   isOpen.value = false;
 };
 
@@ -115,7 +120,8 @@ const checkDropdownPosition = () => {
   if (!wrapperRef.value) return;
   const rect = wrapperRef.value.getBoundingClientRect();
   const spaceBelow = window.innerHeight - rect.bottom;
-  dropdownPosition.value = spaceBelow < 260 ? 'top' : 'bottom';
+  const spaceAbove = rect.top;
+  dropdownPosition.value = spaceBelow < 280 && spaceAbove > spaceBelow ? 'top' : 'bottom';
 };
 
 const onClickOutside = (e: MouseEvent) => {

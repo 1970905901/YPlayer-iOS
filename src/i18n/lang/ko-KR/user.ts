@@ -49,5 +49,7 @@ export default {
     loadFailed: '사용자 페이지 로드 실패',
     deleteSuccess: '삭제 성공',
     deleteFailed: '삭제 실패'
-  }
+  },
+  logout: '로그아웃',
+  logoutConfirm: '현재 NetEase 클라우드 뮤직 계정에서 로그아웃하시겠습니까?'
 };

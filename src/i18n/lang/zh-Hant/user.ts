@@ -49,5 +49,7 @@ export default {
     loadFailed: '載入使用者頁面失敗',
     deleteSuccess: '刪除成功',
     deleteFailed: '刪除失敗'
-  }
+  },
+  logout: '退出登入',
+  logoutConfirm: '確定要退出當前網易雲帳號嗎？'
 };

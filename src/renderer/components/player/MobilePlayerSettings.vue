@@ -34,7 +34,7 @@
           <!-- 内容区域 -->
           <div
             class="flex-1 overflow-y-auto px-5 pb-6"
-            :style="{ paddingBottom: `calc(24px + var(--safe-area-inset-bottom, 0px))` }"
+            :style="{ paddingBottom: `calc(56px + var(--safe-area-inset-bottom, 0px))` }"
           >
             <!-- 播放速度 -->
             <div class="mb-6">
@@ -210,12 +210,13 @@
                 <button
                   v-for="option in cacheLimitOptions"
                   :key="option.value"
+                  style="touch-action: manipulation; -webkit-tap-highlight-color: transparent"
                   @click="handleSelectCacheLimit(option.value)"
-                  class="px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors"
+                  class="px-3.5 py-1.5 rounded-full text-sm font-medium transition-all active:scale-95"
                   :class="
                     currentCacheLimit === option.value
                       ? 'bg-green-500 text-white shadow-sm'
-                      : 'bg-white/10 text-white/70 hover:bg-white/15'
+                      : 'bg-white/10 text-white/70 hover:bg-white/15 active:bg-white/20'
                   "
                 >
                   {{ t(option.labelKey) }}

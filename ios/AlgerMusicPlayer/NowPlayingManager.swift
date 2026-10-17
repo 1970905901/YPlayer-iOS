@@ -289,8 +289,17 @@ final class NowPlayingManager {
 
     /// 构造具备动态尺寸适配与无损高清渲染能力的 MPMediaItemArtwork
     private func createArtwork(from image: UIImage) -> MPMediaItemArtwork {
-        return MPMediaItemArtwork(boundsSize: image.size) { _ in
-            return image
+        return MPMediaItemArtwork(boundsSize: image.size) { requestedSize in
+            guard requestedSize.width > 0 && requestedSize.height > 0 else {
+                return image
+            }
+            if abs(requestedSize.width - image.size.width) < 1 && abs(requestedSize.height - image.size.height) < 1 {
+                return image
+            }
+            let renderer = UIGraphicsImageRenderer(size: requestedSize)
+            return renderer.image { _ in
+                image.draw(in: CGRect(origin: .zero, size: requestedSize))
+            }
         }
     }
 
@@ -390,6 +399,8 @@ final class NowPlayingManager {
         info[MPMediaItemPropertyArtwork] = artwork
         info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         info[MPNowPlayingInfoPropertyIsLiveStream] = false
+        info[MPNowPlayingInfoPropertyPlaybackRate] = isCurrentlyPlaying ? 1.0 : 0.0
+        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
         currentInfo = info
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
 

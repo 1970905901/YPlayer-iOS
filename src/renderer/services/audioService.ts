@@ -196,14 +196,12 @@ class AudioService {
       // 将歌手名放置在歌曲名后面（同字号、同粗细、同颜色显示在标题行）
       const combinedTitle = artistsStr ? `${track.name || ''} - ${artistsStr}` : track.name || '';
 
-      // 传递完整尺寸梯度的封面（96x96 到 800x800），适配 iOS 控制中心折叠小卡片与锁屏放大超清显示
-      const masterArtworkUrl = getTrackCoverUrl(track, '800y800');
+      // 传递超清封面：高分辨率排在首位，确保 WebKit 媒体会话优先加载超清封面，保证锁屏点击放大封面与灵动岛极致清晰
+      const masterArtworkUrl = getTrackCoverUrl(track, '1024y1024');
       const artwork = [
-        { src: getTrackCoverUrl(track, '96y96'), type: 'image/jpeg', sizes: '96x96' },
-        { src: getTrackCoverUrl(track, '128y128'), type: 'image/jpeg', sizes: '128x128' },
-        { src: getTrackCoverUrl(track, '256y256'), type: 'image/jpeg', sizes: '256x256' },
-        { src: getTrackCoverUrl(track, '512y512'), type: 'image/jpeg', sizes: '512x512' },
-        { src: masterArtworkUrl, type: 'image/jpeg', sizes: '800x800' }
+        { src: masterArtworkUrl, type: 'image/jpeg', sizes: '1024x1024' },
+        { src: getTrackCoverUrl(track, '800y800'), type: 'image/jpeg', sizes: '800x800' },
+        { src: getTrackCoverUrl(track, '512y512'), type: 'image/jpeg', sizes: '512x512' }
       ];
 
       navigator.mediaSession.metadata = new window.MediaMetadata({
@@ -284,8 +282,8 @@ class AudioService {
       const album = this.currentTrack.al
         ? this.currentTrack.al.name
         : (this.currentTrack as any).song?.album?.name;
-      // 传递 800x800 高清封面，兼顾急速秒开与锁屏放大超清显示
-      const picUrl = getTrackCoverUrl(this.currentTrack, '800y800');
+      // 传递 1024x1024 超清封面，保证控制中心、灵动岛与锁屏放大显示极致清晰
+      const picUrl = getTrackCoverUrl(this.currentTrack, '1024y1024');
 
       const trackDurationSec =
         (this.currentTrack.dt ? this.currentTrack.dt / 1000 : 0) ||

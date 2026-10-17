@@ -19,7 +19,7 @@
     <mobile-play-bar v-if="isPlay" />
 
     <!-- 底部导航菜单 -->
-    <div v-if="shouldShowBottomMenu" class="mobile-bottom-menu">
+    <div v-show="shouldShowBottomMenu && !playerStore.musicFull" class="mobile-bottom-menu">
       <app-menu class="mobile-menu" :menus="menuStore.menus" />
     </div>
     <!-- 其他弹窗/抽屉 -->
@@ -59,10 +59,10 @@ provide('hasSafeArea', props.isPhone);
 // 是否有播放的歌曲
 const isPlay = computed(() => playerStore.playMusic && playerStore.playMusic.id);
 
-// 是否显示底部菜单（由当前路由决定；全屏播放页由自身全屏抽屉在顶层完整覆盖，无需卸载底部菜单以避免页面重排和掉帧）
+// 是否显示底部菜单（全屏播放页打开时隐藏底部菜单，关闭后恢复）
 const shouldShowBottomMenu = computed(() => {
   const menuPaths = menuStore.menus.map((item: any) => item.path);
-  return menuPaths.includes(route.path);
+  return menuPaths.includes(route.path) && !playerStore.musicFull;
 });
 
 // 提供给 MobilePlayBar 使用，用于调整播放栏位置

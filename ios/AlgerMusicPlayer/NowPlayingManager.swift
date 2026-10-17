@@ -23,6 +23,7 @@ final class NowPlayingManager {
 
     private var currentArtworkUrl: String?
     private var cachedArtwork: MPMediaItemArtwork?
+    private let imageCache = NSCache<NSString, UIImage>()
     private var currentInfo = [String: Any]()
 
     private var baseArtist: String = ""
@@ -235,13 +236,19 @@ final class NowPlayingManager {
         nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         nowPlayingInfo[MPNowPlayingInfoPropertyIsLiveStream] = false
 
-        // 如果封面 URL 发生改变且不为空，清空旧封面并后台异步请求新封面图片
+        // 如果封面 URL 发生改变且不为空，清空旧封面并请求新封面图片
         if info.artworkUrl.isEmpty {
             cachedArtwork = nil
             currentArtworkUrl = nil
         } else if info.artworkUrl != currentArtworkUrl {
-            cachedArtwork = nil
-            loadArtwork(from: info.artworkUrl)
+            currentArtworkUrl = info.artworkUrl
+            // 检查内存图片缓存，若已存在则直接构造 Artwork 避免空白与延迟
+            if let cachedImage = imageCache.object(forKey: info.artworkUrl as NSString) {
+                cachedArtwork = createArtwork(from: cachedImage)
+            } else {
+                cachedArtwork = nil
+                loadArtwork(from: info.artworkUrl)
+            }
         }
 
         // 复用已缓存的封面，避免重复网络加载，新封面加载完成后会自动无缝替换
@@ -253,11 +260,26 @@ final class NowPlayingManager {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
     }
 
+    /// 构造具备无损高清渲染能力的 MPMediaItemArtwork
+    private func createArtwork(from image: UIImage) -> MPMediaItemArtwork {
+        return MPMediaItemArtwork(boundsSize: image.size) { _ in
+            // 返回无损高清图片，由 iOS 系统根据显示场景（锁屏全屏放大、控制中心小卡片、灵动岛）
+            // 自动进行高质量 GPU 抗锯齿超采样渲染，彻底解决锁屏放大或灵动岛封面模糊、不清晰的问题
+            return image
+        }
+    }
+
     /// 异步请求专辑封面图片并生成 MPMediaItemArtwork
     private func loadArtwork(from urlString: String) {
         currentArtworkUrl = urlString
         let secureUrlString = urlString.replacingOccurrences(of: "^http://", with: "https://", options: .regularExpression)
         guard let url = URL(string: secureUrlString) else { return }
+
+        // 检查内存缓存
+        if let cachedImage = imageCache.object(forKey: urlString as NSString) {
+            applyArtwork(cachedImage, for: urlString)
+            return
+        }
 
         var request = URLRequest(url: url)
         request.cachePolicy = .returnCacheDataElseLoad
@@ -271,42 +293,31 @@ final class NowPlayingManager {
                 return
             }
 
-            // 构造具备动态适配尺寸能力的 MPMediaItemArtwork
-            let artwork = MPMediaItemArtwork(boundsSize: image.size) { targetSize in
-                guard targetSize.width > 0, targetSize.height > 0 else {
-                    return image
-                }
-                // 当系统请求尺寸接近或大于原始大图时（如锁屏点击封面全屏展开），直接返回高清原图
-                if targetSize.width >= image.size.width && targetSize.height >= image.size.height {
-                    return image
-                }
-                // 针对控制中心、灵动岛、锁屏未展开小卡片等较小尺寸（如 50x50、60x60、120x120），
-                // 必须根据系统要求的 targetSize 使用 UIGraphicsImageRenderer 动态下采样渲染。
-                // 彻底解决 iOS 控制中心在未展开时因尺寸过大导致封面不显示、点击放大后才显示的问题。
-                let format = UIGraphicsImageRendererFormat.preferred()
-                let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
-                return renderer.image { _ in
-                    image.draw(in: CGRect(origin: .zero, size: targetSize))
-                }
-            }
-            self.cachedArtwork = artwork
+            self.imageCache.setObject(image, forKey: urlString as NSString)
 
             DispatchQueue.main.async {
-                guard self.currentArtworkUrl == urlString else { return }
-                var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? self.currentInfo
-                info[MPMediaItemPropertyArtwork] = artwork
-                info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
-                info[MPNowPlayingInfoPropertyIsLiveStream] = false
-                self.currentInfo = info
-                MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-
-                // 强制触发一次轻量延时通知，确保 SpringBoard 立即捕获新封面，杜绝折叠小卡片空白现象
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    if self.currentArtworkUrl == urlString {
-                        MPNowPlayingInfoCenter.default().nowPlayingInfo = self.currentInfo
-                    }
-                }
+                self.applyArtwork(image, for: urlString)
             }
         }.resume()
+    }
+
+    /// 应用封面并通知系统媒体中心
+    private func applyArtwork(_ image: UIImage, for urlString: String) {
+        guard currentArtworkUrl == urlString else { return }
+        let artwork = createArtwork(from: image)
+        cachedArtwork = artwork
+
+        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? currentInfo
+        info[MPMediaItemPropertyArtwork] = artwork
+        info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+        info[MPNowPlayingInfoPropertyIsLiveStream] = false
+        currentInfo = info
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+
+        // 触发一次轻量延迟刷新，确保 SpringBoard 立即捕获新封面，无论折叠还是展开均完整同步
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self = self, self.currentArtworkUrl == urlString else { return }
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = self.currentInfo
+        }
     }
 }

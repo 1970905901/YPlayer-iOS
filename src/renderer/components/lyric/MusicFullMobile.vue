@@ -6,7 +6,7 @@
     placement="bottom"
     :style="{ background: playerStore.playMusic.primaryColor || background }"
     :to="`#layout-main`"
-    :z-index="10001"
+    :z-index="100005"
     display-directive="show"
     :trap-focus="false"
     :auto-focus="false"

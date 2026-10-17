@@ -50,9 +50,17 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         case "setNativeCacheLimit":
             handleSetNativeCacheLimit(payload: body)
 
+        case "preloadArtwork":
+            handlePreloadArtwork(payload: body)
+
         default:
             print("[NativeBridge] 未知操作类型: \(action)")
         }
+    }
+
+    private func handlePreloadArtwork(payload: [String: Any]) {
+        guard let artworkUrl = payload["artworkUrl"] as? String, !artworkUrl.isEmpty else { return }
+        NowPlayingManager.shared.preloadArtwork(from: artworkUrl)
     }
 
     private func handleUpdatePlayState(payload: [String: Any]) {

@@ -78,6 +78,14 @@ class NativeBridge {
   }
 
   /**
+   * 预加载下一首歌曲封面图片到 iOS 原生缓存
+   */
+  public preloadArtwork(url: string) {
+    if (!this.isIOS || !url) return;
+    this.postMessage('preloadArtwork', { artworkUrl: url });
+  }
+
+  /**
    * 触发原生震动触觉反馈 (UIFeedbackGenerator)
    */
   public triggerHaptic(style: HapticStyle = 'selection') {

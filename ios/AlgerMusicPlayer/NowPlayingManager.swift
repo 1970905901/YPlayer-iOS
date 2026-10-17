@@ -33,8 +33,8 @@ final class NowPlayingManager {
     private var isCurrentlyPlaying: Bool = false
 
     private init() {
-        // 限制内存缓存仅保存 1 首当前播放歌曲的封面，切换下一首后立即释放上一首位图
-        imageCache.countLimit = 1
+        // 保持近期播放歌曲封面缓存 (30 首)，确保切歌与上下首秒出封面无空白延迟
+        imageCache.countLimit = 30
         if Thread.isMainThread {
             self.screenScale = UIScreen.main.scale
         } else {
@@ -259,22 +259,24 @@ final class NowPlayingManager {
         nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         nowPlayingInfo[MPNowPlayingInfoPropertyIsLiveStream] = false
 
+        // 规范化封面 URL (转 https，替换 1024/800 为标准 500y500)
+        let cleanArtworkUrl = sanitizeArtworkUrl(info.artworkUrl)
+
         // 如果封面 URL 发生改变且不为空，请求新封面图片
-        if info.artworkUrl.isEmpty {
-            // 仅当当前非播放状态时才清空缓存，避免播放过程中短暂空 URL 触发清空
+        if cleanArtworkUrl.isEmpty {
             if !self.isCurrentlyPlaying {
                 cachedArtwork = nil
                 currentArtworkUrl = nil
                 imageCache.removeAllObjects()
             }
-        } else if info.artworkUrl != currentArtworkUrl {
-            currentArtworkUrl = info.artworkUrl
+        } else if cleanArtworkUrl != currentArtworkUrl {
+            currentArtworkUrl = cleanArtworkUrl
             // 检查内存图片缓存，若已存在则直接构造 Artwork 避免空白与延迟
-            if let cachedImage = imageCache.object(forKey: info.artworkUrl as NSString) {
+            if let cachedImage = imageCache.object(forKey: cleanArtworkUrl as NSString) {
                 cachedArtwork = createArtwork(from: cachedImage)
             } else {
-                // 不立即清空旧 cachedArtwork，等待新封面加载就绪后再替换，杜绝切歌过程出现灰色空白方块
-                loadArtwork(from: info.artworkUrl)
+                // 后台异步下载封面，避免切歌卡顿
+                loadArtwork(from: cleanArtworkUrl, isPreload: false)
             }
         }
 
@@ -285,6 +287,27 @@ final class NowPlayingManager {
 
         self.currentInfo = nowPlayingInfo
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+    }
+
+    /// 规范化封面图片 URL
+    private func sanitizeArtworkUrl(_ urlString: String) -> String {
+        var clean = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.lowercased().hasPrefix("http://") {
+            clean = "https://" + clean.dropFirst(7)
+        }
+        clean = clean.replacingOccurrences(of: "param=1024y1024", with: "param=500y500")
+        clean = clean.replacingOccurrences(of: "param=800y800", with: "param=500y500")
+        return clean
+    }
+
+    /// 预加载下一首歌曲封面至原生内存缓存，确保切歌瞬间封面 0 延迟秒现
+    func preloadArtwork(from urlString: String) {
+        let clean = sanitizeArtworkUrl(urlString)
+        guard !clean.isEmpty else { return }
+        if imageCache.object(forKey: clean as NSString) != nil {
+            return
+        }
+        loadArtwork(from: clean, isPreload: true)
     }
 
     /// 构造具备动态尺寸适配与无损高清渲染能力的 MPMediaItemArtwork
@@ -304,50 +327,55 @@ final class NowPlayingManager {
     }
 
     /// 异步请求专辑封面图片并生成 MPMediaItemArtwork
-    private func loadArtwork(from urlString: String) {
-        currentArtworkUrl = urlString
+    private func loadArtwork(from urlString: String, isPreload: Bool = false) {
+        let cleanUrlString = sanitizeArtworkUrl(urlString)
+        if !isPreload {
+            currentArtworkUrl = cleanUrlString
+        }
 
         // 检查内存缓存
-        if let cachedImage = imageCache.object(forKey: urlString as NSString) {
-            applyArtwork(cachedImage, for: urlString)
+        if let cachedImage = imageCache.object(forKey: cleanUrlString as NSString) {
+            if !isPreload {
+                applyArtwork(cachedImage, for: cleanUrlString)
+            }
             return
         }
 
         // 1. 支持 base64 Data URL (本地导入或插件音乐封面)
-        if urlString.hasPrefix("data:image/") {
-            if let commaIndex = urlString.firstIndex(of: ",") {
-                let base64String = String(urlString[urlString.index(after: commaIndex)...])
+        if cleanUrlString.hasPrefix("data:image/") {
+            if let commaIndex = cleanUrlString.firstIndex(of: ",") {
+                let base64String = String(cleanUrlString[cleanUrlString.index(after: commaIndex)...])
                 if let data = Data(base64Encoded: base64String, options: .ignoreUnknownCharacters),
                    let image = UIImage(data: data) {
-                    applyArtwork(image, for: urlString)
+                    imageCache.setObject(image, forKey: cleanUrlString as NSString)
+                    if !isPreload {
+                        applyArtwork(image, for: cleanUrlString)
+                    }
                     return
                 }
             }
         }
 
         // 2. 支持本地文件路径
-        if urlString.hasPrefix("file://"), let fileUrl = URL(string: urlString) {
+        if cleanUrlString.hasPrefix("file://"), let fileUrl = URL(string: cleanUrlString) {
             if let image = UIImage(contentsOfFile: fileUrl.path) {
-                applyArtwork(image, for: urlString)
+                imageCache.setObject(image, forKey: cleanUrlString as NSString)
+                if !isPreload {
+                    applyArtwork(image, for: cleanUrlString)
+                }
                 return
             }
-        } else if urlString.hasPrefix("/") && FileManager.default.fileExists(atPath: urlString) {
-            if let image = UIImage(contentsOfFile: urlString) {
-                applyArtwork(image, for: urlString)
+        } else if cleanUrlString.hasPrefix("/") && FileManager.default.fileExists(atPath: cleanUrlString) {
+            if let image = UIImage(contentsOfFile: cleanUrlString) {
+                imageCache.setObject(image, forKey: cleanUrlString as NSString)
+                if !isPreload {
+                    applyArtwork(image, for: cleanUrlString)
+                }
                 return
             }
         }
 
-        // 3. 网络图片 URL 预处理
-        var cleanUrlString = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
-        if cleanUrlString.lowercased().hasPrefix("http://") {
-            cleanUrlString = "https://" + cleanUrlString.dropFirst(7)
-        }
-
-        // 统一将 1024y1024 或 800y800 等超大尺寸自动降采样为 iOS 最优的 500y500
-        cleanUrlString = cleanUrlString.replacingOccurrences(of: "param=1024y1024", with: "param=500y500")
-        cleanUrlString = cleanUrlString.replacingOccurrences(of: "param=800y800", with: "param=500y500")
-
+        // 3. 网络请求
         guard let url = URL(string: cleanUrlString) ?? URL(string: cleanUrlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "") else {
             print("[NowPlayingManager] 封面 URL 解析失败: \(urlString)")
             return
@@ -378,8 +406,12 @@ final class NowPlayingManager {
                 return
             }
 
+            self.imageCache.setObject(image, forKey: cleanUrlString as NSString)
+
             DispatchQueue.main.async {
-                self.applyArtwork(image, for: urlString)
+                if !isPreload || self.currentArtworkUrl == cleanUrlString {
+                    self.applyArtwork(image, for: cleanUrlString)
+                }
             }
         }.resume()
     }
@@ -388,27 +420,20 @@ final class NowPlayingManager {
     private func applyArtwork(_ image: UIImage, for urlString: String) {
         guard currentArtworkUrl == urlString else { return }
 
-        // 播放下一首歌曲封面就绪后，主动释放上一首歌曲的内存缓存，杜绝常驻内存堆积
-        imageCache.removeAllObjects()
-        imageCache.setObject(image, forKey: urlString as NSString)
-
         let artwork = createArtwork(from: image)
         cachedArtwork = artwork
 
-        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? currentInfo
+        var info = currentInfo
         info[MPMediaItemPropertyArtwork] = artwork
         info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         info[MPNowPlayingInfoPropertyIsLiveStream] = false
         info[MPNowPlayingInfoPropertyPlaybackRate] = isCurrentlyPlaying ? 1.0 : 0.0
         info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
         currentInfo = info
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
 
-        // 触发一次轻量延迟刷新，确保 SpringBoard 立即捕获新封面，无论折叠还是展开均完整同步
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            guard let self = self, self.currentArtworkUrl == urlString else { return }
-            MPNowPlayingInfoCenter.default().nowPlayingInfo = self.currentInfo
-        }
+        // 核心突破：通过 nil 置空重绘，强制 iOS SpringBoard 立即重新构建锁屏小卡片视图，彻底解决初始折叠状态不显示封面问题！
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
     /// 清除所有封面图片缓存，响应整软件资源缓存清理或不缓存策略

@@ -654,6 +654,9 @@ class AudioService {
         this._isLoading = true;
         this.currentTrack = track;
 
+        // 立即向原生端同步待播歌曲信息与封面 URL，在音频缓冲期间提前完成封面下载与缓存
+        this.syncNativePlayState(isPlay);
+
         // Ensure EQ/AudioContext is set up (only runs once)
         this.setupEQ();
 

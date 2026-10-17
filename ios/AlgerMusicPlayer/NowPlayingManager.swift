@@ -205,6 +205,10 @@ final class NowPlayingManager {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? self.currentInfo
+            if !self.baseTitle.isEmpty {
+                let combinedTitle = self.baseArtist.isEmpty ? self.baseTitle : "\(self.baseTitle) - \(self.baseArtist)"
+                info[MPMediaItemPropertyTitle] = combinedTitle
+            }
             info[MPMediaItemPropertyArtist] = trimmed
             info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
             info[MPNowPlayingInfoPropertyIsLiveStream] = false
@@ -283,33 +287,10 @@ final class NowPlayingManager {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
     }
 
-    /// 构造具备动态尺寸适配与无损超清渲染能力的 MPMediaItemArtwork
+    /// 构造具备动态尺寸适配与无损高清渲染能力的 MPMediaItemArtwork
     private func createArtwork(from image: UIImage) -> MPMediaItemArtwork {
-        return MPMediaItemArtwork(boundsSize: image.size) { targetSize in
-            guard targetSize.width > 0 && targetSize.height > 0 else {
-                return image
-            }
-
-            // 当系统请求尺寸较大（如锁屏点击全屏展开大图 targetSize >= 300）或系统要求尺寸接近/大于原图时，
-            // 直接返回原图，由系统 GPU 进行全像素超清无损渲染，彻底解决放大模糊、不清晰问题！
-            if targetSize.width >= 300 || targetSize.width >= image.size.width {
-                return image
-            }
-
-            // 针对控制中心、灵动岛、锁屏未展开小卡片等小尺寸（如 50x50、60x60、120x120），
-            // 必须按 targetSize 动态下采样渲染，杜绝 SpringBoard 因原图体积过大（4MB+）而直接拒显灰色方块！
-            let format = UIGraphicsImageRendererFormat.default()
-            let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
-            return renderer.image { _ in
-                let aspectWidth = targetSize.width / max(1, image.size.width)
-                let aspectHeight = targetSize.height / max(1, image.size.height)
-                let aspectRatio = max(aspectWidth, aspectHeight)
-                let scaledWidth = image.size.width * aspectRatio
-                let scaledHeight = image.size.height * aspectRatio
-                let originX = (targetSize.width - scaledWidth) / 2.0
-                let originY = (targetSize.height - scaledHeight) / 2.0
-                image.draw(in: CGRect(x: originX, y: originY, width: scaledWidth, height: scaledHeight))
-            }
+        return MPMediaItemArtwork(boundsSize: image.size) { _ in
+            return image
         }
     }
 
@@ -353,6 +334,10 @@ final class NowPlayingManager {
         if cleanUrlString.lowercased().hasPrefix("http://") {
             cleanUrlString = "https://" + cleanUrlString.dropFirst(7)
         }
+
+        // 统一将 1024y1024 或 800y800 等超大尺寸自动降采样为 iOS 最优的 500y500
+        cleanUrlString = cleanUrlString.replacingOccurrences(of: "param=1024y1024", with: "param=500y500")
+        cleanUrlString = cleanUrlString.replacingOccurrences(of: "param=800y800", with: "param=500y500")
 
         guard let url = URL(string: cleanUrlString) ?? URL(string: cleanUrlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "") else {
             print("[NowPlayingManager] 封面 URL 解析失败: \(urlString)")

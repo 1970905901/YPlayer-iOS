@@ -87,6 +87,8 @@ export const getImgUrl = (url: string | undefined, size: string = '') => {
   // 保证 HTTPS 链接
   let cleanUrl = url.replace(/^http:\/\//i, 'https://');
 
+  if (size === 'raw') return cleanUrl;
+
   const finalSize = size || '800y800';
 
   if (cleanUrl.includes('thumbnail=')) {

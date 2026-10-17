@@ -169,7 +169,11 @@ class AudioService {
     try {
       if ('mediaSession' in navigator && navigator.mediaSession.metadata) {
         // 歌词单独展示在副标题位置，不添加歌手名（歌手名已合并至标题行，保持同字号、同粗细、同颜色）
-        navigator.mediaSession.metadata.artist = trimmed;
+        const artists = this.currentTrack?.ar
+          ? this.currentTrack.ar.map((a: any) => a.name)
+          : (this.currentTrack as any)?.song?.artists?.map((a: any) => a.name);
+        const fallbackArtist = artists ? artists.join(' / ') : ' ';
+        navigator.mediaSession.metadata.artist = trimmed || fallbackArtist;
       }
     } catch {
       // ignore
@@ -179,6 +183,68 @@ class AudioService {
       const curTime = isFinite(this.audio?.currentTime) ? this.audio.currentTime : 0;
       const duration = isFinite(this.audio?.duration) ? this.audio.duration : 0;
       nativeBridge.updateLyric(trimmed, curTime, duration);
+    } catch {
+      // ignore
+    }
+  }
+
+  private currentBlobUrl: string | null = null;
+
+  private async loadArtworkAsBlobUrl(imageUrl: string) {
+    if (!imageUrl) return;
+    try {
+      let blob: Blob | null = null;
+      try {
+        const response = await fetch(imageUrl, { mode: 'cors' });
+        if (response.ok) {
+          blob = await response.blob();
+        }
+      } catch {
+        // fetch fallback
+      }
+
+      if (!blob) {
+        blob = await new Promise<Blob | null>((resolve) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => {
+            try {
+              const canvas = document.createElement('canvas');
+              canvas.width = Math.min(img.naturalWidth || 500, 500);
+              canvas.height = Math.min(img.naturalHeight || 500, 500);
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.9);
+              } else {
+                resolve(null);
+              }
+            } catch {
+              resolve(null);
+            }
+          };
+          img.onerror = () => resolve(null);
+          img.src = imageUrl;
+        });
+      }
+
+      if (!blob) return;
+
+      if (this.currentBlobUrl) {
+        URL.revokeObjectURL(this.currentBlobUrl);
+      }
+      const blobUrl = URL.createObjectURL(blob);
+      this.currentBlobUrl = blobUrl;
+
+      if ('mediaSession' in navigator && navigator.mediaSession.metadata) {
+        navigator.mediaSession.metadata.artwork = [
+          { src: blobUrl, sizes: '512x512', type: 'image/jpeg' },
+          { src: blobUrl, sizes: '256x256', type: 'image/jpeg' },
+          { src: blobUrl, sizes: '128x128', type: 'image/jpeg' },
+          { src: blobUrl, sizes: '96x96', type: 'image/jpeg' },
+          { src: imageUrl, sizes: '512x512', type: 'image/jpeg' }
+        ];
+      }
     } catch {
       // ignore
     }
@@ -197,23 +263,29 @@ class AudioService {
       // 将歌手名放置在歌曲名后面（同字号、同粗细、同颜色显示在标题行）
       const combinedTitle = artistsStr ? `${track.name || ''} - ${artistsStr}` : track.name || '';
 
-      // 传递超清封面：高分辨率排在首位，确保 WebKit 媒体会话优先加载超清封面，保证锁屏点击放大封面与灵动岛极致清晰
-      const masterArtworkUrl = getTrackCoverUrl(track, '1024y1024');
+      // 传递高清封面：使用 NetEase 支持最好的 500y500 尺寸和标准 iOS 媒体尺寸
+      const coverUrl500 = getTrackCoverUrl(track, '500y500');
+      const coverUrl300 = getTrackCoverUrl(track, '300y300');
+      const coverUrl100 = getTrackCoverUrl(track, '100y100');
+      const rawCoverUrl = getTrackCoverUrl(track, 'raw');
+
       const artwork = [
-        { src: masterArtworkUrl, type: 'image/jpeg', sizes: '1024x1024' },
-        { src: getTrackCoverUrl(track, '800y800'), type: 'image/jpeg', sizes: '800x800' },
-        { src: getTrackCoverUrl(track, '512y512'), type: 'image/jpeg', sizes: '512x512' },
-        { src: getTrackCoverUrl(track, '256y256'), type: 'image/jpeg', sizes: '256x256' },
-        { src: getTrackCoverUrl(track, '128y128'), type: 'image/jpeg', sizes: '128x128' }
+        { src: coverUrl500, type: 'image/jpeg', sizes: '512x512' },
+        { src: coverUrl300, type: 'image/jpeg', sizes: '256x256' },
+        { src: coverUrl100, type: 'image/jpeg', sizes: '128x128' },
+        { src: coverUrl100, type: 'image/jpeg', sizes: '96x96' },
+        { src: rawCoverUrl, sizes: '512x512', type: 'image/jpeg' }
       ];
 
-      if (!nativeBridge.isIOS) {
-        navigator.mediaSession.metadata = new window.MediaMetadata({
-          title: combinedTitle,
-          artist: this.currentLyric || artistsStr || ' ', // 优先展示实时歌词，无歌词时回退歌手名，避免空字符串触发系统置灰
-          album: album || '',
-          artwork
-        });
+      navigator.mediaSession.metadata = new window.MediaMetadata({
+        title: combinedTitle,
+        artist: this.currentLyric || artistsStr || ' ', // 优先展示实时歌词，无歌词时回退歌手名，避免空字符串触发系统置灰
+        album: album || '',
+        artwork
+      });
+
+      if (coverUrl500) {
+        void this.loadArtworkAsBlobUrl(coverUrl500);
       }
 
       // 每次切换歌曲时再次确保禁用 15 秒快进快退，激活上一首/下一首/播放/暂停核心交互
@@ -251,7 +323,7 @@ class AudioService {
   }
 
   private updateMediaSessionState(isPlaying: boolean) {
-    if (!nativeBridge.isIOS && 'mediaSession' in navigator) {
+    if ('mediaSession' in navigator) {
       navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
     }
     this.updateMediaSessionPositionState();
@@ -260,12 +332,7 @@ class AudioService {
 
   private updateMediaSessionPositionState() {
     try {
-      if (
-        !nativeBridge.isIOS &&
-        'mediaSession' in navigator &&
-        this.audio.duration &&
-        isFinite(this.audio.duration)
-      ) {
+      if ('mediaSession' in navigator && this.audio.duration && isFinite(this.audio.duration)) {
         if ('setPositionState' in navigator.mediaSession) {
           navigator.mediaSession.setPositionState({
             duration: this.audio.duration,
@@ -292,8 +359,8 @@ class AudioService {
       const album = this.currentTrack.al
         ? this.currentTrack.al.name
         : (this.currentTrack as any).song?.album?.name;
-      // 传递 1024x1024 超清封面，保证控制中心、灵动岛与锁屏放大显示极致清晰
-      const picUrl = getTrackCoverUrl(this.currentTrack, '1024y1024');
+      // 传递 500x500 高清封面，与 iOS MediaPlayer 完美契合，杜绝尺寸超限与加载失败
+      const picUrl = getTrackCoverUrl(this.currentTrack, '500y500');
       if (picUrl && this.currentTrack.id) {
         void resourceCacheService.trackResource(
           `song_cover_${this.currentTrack.id}`,

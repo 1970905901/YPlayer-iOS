@@ -201,21 +201,23 @@ class AudioService {
       // 将歌手名放置在歌曲名后面（同字号、同粗细、同颜色显示在标题行）
       const combinedTitle = artistsStr ? `${track.name || ''} - ${artistsStr}` : track.name || '';
 
-      // 传递高清封面：使用 NetEase 支持最好的精确尺寸梯度，适配 iOS 控制中心小卡片与锁屏全屏超清大图
-      const coverUrl96 = getTrackCoverUrl(track, '96y96');
-      const coverUrl128 = getTrackCoverUrl(track, '128y128');
-      const coverUrl256 = getTrackCoverUrl(track, '256y256');
-      const coverUrl384 = getTrackCoverUrl(track, '384y384');
-      const coverUrl512 = getTrackCoverUrl(track, '512y512');
+      // 传递超清封面：高分辨率排在首位，确保 WebKit 媒体会话优先加载超清封面，保证锁屏点击放大封面与灵动岛极致清晰
+      const masterArtworkUrl = getTrackCoverUrl(track, '1024y1024');
       const coverUrl800 = getTrackCoverUrl(track, '800y800');
+      const coverUrl512 = getTrackCoverUrl(track, '512y512');
+      const coverUrl384 = getTrackCoverUrl(track, '384y384');
+      const coverUrl256 = getTrackCoverUrl(track, '256y256');
+      const coverUrl128 = getTrackCoverUrl(track, '128y128');
+      const coverUrl96 = getTrackCoverUrl(track, '96y96');
 
       const artwork = [
-        { src: coverUrl96, type: 'image/jpeg', sizes: '96x96' },
-        { src: coverUrl128, type: 'image/jpeg', sizes: '128x128' },
-        { src: coverUrl256, type: 'image/jpeg', sizes: '256x256' },
-        { src: coverUrl384, type: 'image/jpeg', sizes: '384x384' },
+        { src: masterArtworkUrl, type: 'image/jpeg', sizes: '1024x1024' },
+        { src: coverUrl800, type: 'image/jpeg', sizes: '800x800' },
         { src: coverUrl512, type: 'image/jpeg', sizes: '512x512' },
-        { src: coverUrl800, type: 'image/jpeg', sizes: '800x800' }
+        { src: coverUrl384, type: 'image/jpeg', sizes: '384x384' },
+        { src: coverUrl256, type: 'image/jpeg', sizes: '256x256' },
+        { src: coverUrl128, type: 'image/jpeg', sizes: '128x128' },
+        { src: coverUrl96, type: 'image/jpeg', sizes: '96x96' }
       ];
 
       navigator.mediaSession.metadata = new window.MediaMetadata({
@@ -296,8 +298,8 @@ class AudioService {
       const album = this.currentTrack.al
         ? this.currentTrack.al.name
         : (this.currentTrack as any).song?.album?.name;
-      // 传递 500x500 高清封面，与 iOS MediaPlayer 完美契合，杜绝尺寸超限与加载失败
-      const picUrl = getTrackCoverUrl(this.currentTrack, '500y500');
+      // 传递 1024x1024 超清封面，保证控制中心、灵动岛与锁屏放大显示极致清晰
+      const picUrl = getTrackCoverUrl(this.currentTrack, '1024y1024');
       if (picUrl && this.currentTrack.id) {
         void resourceCacheService.trackResource(
           `song_cover_${this.currentTrack.id}`,

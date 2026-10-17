@@ -354,8 +354,6 @@ final class NowPlayingManager {
         if clean.lowercased().hasPrefix("http://") {
             clean = "https://" + clean.dropFirst(7)
         }
-        clean = clean.replacingOccurrences(of: "param=1024y1024", with: "param=500y500")
-        clean = clean.replacingOccurrences(of: "param=800y800", with: "param=500y500")
         return clean
     }
 
@@ -375,10 +373,15 @@ final class NowPlayingManager {
             guard requestedSize.width > 0 && requestedSize.height > 0 else {
                 return image
             }
-            if abs(requestedSize.width - image.size.width) < 1 && abs(requestedSize.height - image.size.height) < 1 {
+            // 当系统请求大图（如锁屏点击全屏展开大图 targetSize >= 300）或系统要求尺寸接近/大于原图时，
+            // 直接返回原始高清原图，由系统 GPU 进行全像素超清无损渲染，彻底解决锁屏放大模糊、不清晰问题！
+            if requestedSize.width >= 300 || requestedSize.width >= image.size.width {
                 return image
             }
-            let renderer = UIGraphicsImageRenderer(size: requestedSize)
+            // 针对控制中心、灵动岛、锁屏未展开小卡片等较小尺寸（如 50x50、60x60、120x120），
+            // 必须按系统 requestedSize 动态下采样渲染，杜绝 SpringBoard 折叠卡片异常，且对齐 Retina 像素清晰无锯齿
+            let format = UIGraphicsImageRendererFormat.preferred()
+            let renderer = UIGraphicsImageRenderer(size: requestedSize, format: format)
             return renderer.image { _ in
                 image.draw(in: CGRect(origin: .zero, size: requestedSize))
             }

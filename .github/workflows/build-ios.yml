@@ -8,6 +8,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-ios:
     name: Build iOS App (iOS 14.0+)
@@ -63,3 +66,12 @@ jobs:
           path: build-output/YPlayer-iOS.ipa
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build-output/YPlayer-iOS.ipa
+          draft: false
+          prerelease: false
+          generate_release_notes: true

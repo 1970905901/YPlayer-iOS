@@ -186,12 +186,11 @@ class AudioService {
       // 将歌手名放置在歌曲名后面（同字号、同粗细、同颜色显示在标题行）
       const combinedTitle = artistsStr ? `${track.name || ''} - ${artistsStr}` : track.name || '';
 
-      // 传递最高超清封面（降序排列，保证 WebKit 优先选择最高清图），保证锁屏点击放大封面依然超高清显示
-      const masterArtworkUrl = getTrackCoverUrl(track, '');
+      // 传递超清封面（降序排列，保证 WebKit 优先选择最高清图），保证锁屏点击放大封面依然超高清显示
+      const masterArtworkUrl = getTrackCoverUrl(track, '800y800');
       const artwork = [
-        { src: masterArtworkUrl, type: 'image/jpeg', sizes: '1400x1400' },
-        { src: getTrackCoverUrl(track, '1200y1200'), type: 'image/jpeg', sizes: '1200x1200' },
-        { src: getTrackCoverUrl(track, '512y512'), type: 'image/jpeg', sizes: '512x512' },
+        { src: masterArtworkUrl, type: 'image/jpeg', sizes: '800x800' },
+        { src: getTrackCoverUrl(track, '500y500'), type: 'image/jpeg', sizes: '500x500' },
         { src: getTrackCoverUrl(track, '256y256'), type: 'image/jpeg', sizes: '256x256' }
       ];
 
@@ -259,8 +258,8 @@ class AudioService {
       const album = this.currentTrack.al
         ? this.currentTrack.al.name
         : (this.currentTrack as any).song?.album?.name;
-      // 传递无压缩原图 Master 超清封面图片，点击锁屏封面放大后极致清晰
-      const picUrl = getTrackCoverUrl(this.currentTrack, '');
+      // 传递 800x800 高清封面，兼顾急速秒开与锁屏放大超清显示
+      const picUrl = getTrackCoverUrl(this.currentTrack, '800y800');
 
       const trackDurationSec =
         (this.currentTrack.dt ? this.currentTrack.dt / 1000 : 0) ||

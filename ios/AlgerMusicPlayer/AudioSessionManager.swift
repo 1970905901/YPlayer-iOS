@@ -18,14 +18,14 @@ final class AudioSessionManager {
         }
     }
 
-    /// 配置 AVAudioSession 支持后台持续播放及灵动岛长音频模式
+    /// 配置 AVAudioSession 支持后台持续播放
     func configureAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(
                 .playback,
                 mode: .default,
-                policy: .longFormAudio
+                options: [.allowAirPlay, .allowBluetooth]
             )
             try session.setActive(true)
         } catch {

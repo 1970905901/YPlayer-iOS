@@ -51,10 +51,6 @@ final class NowPlayingManager {
         commandCenter.seekForwardCommand.isEnabled = false
         commandCenter.seekBackwardCommand.isEnabled = false
 
-        // 彻底停用 togglePlayPauseCommand（苹果官方规范：与 playCommand/pauseCommand 同时启用会导致控制中心/灵动岛按钮置灰）
-        commandCenter.togglePlayPauseCommand.removeTarget(nil)
-        commandCenter.togglePlayPauseCommand.isEnabled = false
-
         // 启用上一首
         commandCenter.previousTrackCommand.removeTarget(nil)
         commandCenter.previousTrackCommand.isEnabled = true
@@ -71,7 +67,7 @@ final class NowPlayingManager {
             return .success
         }
 
-        // 启用播放指令 (立即乐观更新 playbackRate 为 1.0，保证控制中心与灵动岛瞬时响应不置灰)
+        // 启用播放指令 (立即乐观更新 playbackRate 为 1.0，保证控制中心瞬时响应)
         commandCenter.playCommand.removeTarget(nil)
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { [weak self] _ in
@@ -79,11 +75,19 @@ final class NowPlayingManager {
             return .success
         }
 
-        // 启用暂停指令 (立即乐观更新 playbackRate 为 0.0，保证控制中心与灵动岛瞬时响应不置灰)
+        // 启用暂停指令 (立即乐观更新 playbackRate 为 0.0，保证控制中心瞬时响应)
         commandCenter.pauseCommand.removeTarget(nil)
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.addTarget { [weak self] _ in
             self?.handleRemotePause()
+            return .success
+        }
+
+        // 启用播放/暂停切换指令 (控制中心和耳机按键的单键切换核心指令)
+        commandCenter.togglePlayPauseCommand.removeTarget(nil)
+        commandCenter.togglePlayPauseCommand.isEnabled = true
+        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+            self?.handleRemoteToggle()
             return .success
         }
 
@@ -101,7 +105,7 @@ final class NowPlayingManager {
         enforceRemoteCommands()
     }
 
-    /// 强制校准控制中心按钮状态：彻底禁用 15 秒快进快退，确保上一首/下一首/播放/暂停始终处于可用状态
+    /// 强制校准控制中心按钮状态：彻底禁用 15 秒快进快退，确保上一首/下一首/播放/暂停/切换始终处于可用状态
     private func enforceRemoteCommands() {
         let commandCenter = MPRemoteCommandCenter.shared()
 
@@ -112,13 +116,11 @@ final class NowPlayingManager {
         commandCenter.seekForwardCommand.isEnabled = false
         commandCenter.seekBackwardCommand.isEnabled = false
 
-        commandCenter.togglePlayPauseCommand.removeTarget(nil)
-        commandCenter.togglePlayPauseCommand.isEnabled = false
-
         commandCenter.previousTrackCommand.isEnabled = true
         commandCenter.nextTrackCommand.isEnabled = true
         commandCenter.playCommand.isEnabled = true
         commandCenter.pauseCommand.isEnabled = true
+        commandCenter.togglePlayPauseCommand.isEnabled = true
         commandCenter.changePlaybackPositionCommand.isEnabled = true
     }
 
@@ -131,7 +133,6 @@ final class NowPlayingManager {
         info[MPNowPlayingInfoPropertyIsLiveStream] = false
         currentInfo = info
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-        try? AVAudioSession.sharedInstance().setActive(true)
         dispatchRemoteCommand("play")
     }
 
@@ -145,6 +146,14 @@ final class NowPlayingManager {
         currentInfo = info
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         dispatchRemoteCommand("pause")
+    }
+
+    private func handleRemoteToggle() {
+        if isCurrentlyPlaying {
+            handleRemotePause()
+        } else {
+            handleRemotePlay()
+        }
     }
 
     private func handleRemoteSeek(to position: Double) {
@@ -197,11 +206,6 @@ final class NowPlayingManager {
         currentLyric = ""
         isCurrentlyPlaying = info.isPlaying
 
-        // 切换不同曲目时重置封面缓存，避免展示上一首歌曲的封面
-        if info.artworkUrl != currentArtworkUrl {
-            cachedArtwork = nil
-        }
-
         enforceRemoteCommands()
 
         var nowPlayingInfo = [String: Any]()
@@ -226,7 +230,7 @@ final class NowPlayingManager {
         nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         nowPlayingInfo[MPNowPlayingInfoPropertyIsLiveStream] = false
 
-        // 复用已缓存的封面，避免重复网络加载
+        // 复用已缓存的封面，避免重复网络加载，新封面加载完成后会自动无缝替换
         if let cached = cachedArtwork {
             nowPlayingInfo[MPMediaItemPropertyArtwork] = cached
         }
@@ -234,12 +238,11 @@ final class NowPlayingManager {
         self.currentInfo = nowPlayingInfo
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
 
-        if info.isPlaying {
-            try? AVAudioSession.sharedInstance().setActive(true)
-        }
-
         // 如果封面 URL 发生改变且不为空，后台异步请求封面图片
-        if !info.artworkUrl.isEmpty && info.artworkUrl != currentArtworkUrl {
+        if info.artworkUrl.isEmpty {
+            cachedArtwork = nil
+            currentArtworkUrl = nil
+        } else if info.artworkUrl != currentArtworkUrl {
             loadArtwork(from: info.artworkUrl)
         }
     }
@@ -252,6 +255,7 @@ final class NowPlayingManager {
 
         var request = URLRequest(url: url)
         request.cachePolicy = .returnCacheDataElseLoad
+        request.timeoutInterval = 15
 
         URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
             guard let self = self,

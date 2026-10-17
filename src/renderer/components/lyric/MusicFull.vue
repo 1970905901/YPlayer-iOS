@@ -258,12 +258,12 @@ import {
   artistList,
   correctionTime,
   lrcArray,
+  lrcTimeArray,
   nowIndex,
   nowTime,
   playMusic,
   setAudioTime,
-  textColors,
-  useLyricProgress
+  textColors
 } from '@/hooks/MusicHook';
 import { useArtist } from '@/hooks/useArtist';
 import { useLyricBackground } from '@/hooks/useLyricBackground';
@@ -498,10 +498,15 @@ const mouseLeaveLayout = () => {
   }, 2000);
 };
 
-watch(nowIndex, () => {
+watch(nowIndex, (newIndex, oldIndex) => {
   // 歌曲切换时不自动滚动
   if (isSongChanging.value) return;
-  debouncedLrcScroll();
+  const isLargeJump = Math.abs((newIndex ?? 0) - (oldIndex ?? 0)) > 1;
+  if (isLargeJump) {
+    lrcScroll('instant');
+  } else {
+    debouncedLrcScroll();
+  }
 });
 
 watch(
@@ -545,37 +550,36 @@ watch(
   { immediate: true }
 );
 
-const { getLrcStyle: originalLrcStyle } = useLyricProgress();
-
 const getLrcStyle = (index: number) => {
   const colors = textColors.value || getTextColors();
-  const originalStyle = originalLrcStyle(index);
   const focusOn = config.value.focusCurrentLyric;
 
-  if (index === nowIndex.value) {
-    // 当前播放的歌词
-    if (originalStyle.backgroundImage) {
-      // 有渐变进度时，使用渐变效果
-      return {
-        ...originalStyle,
-        backgroundImage: originalStyle.backgroundImage
-          .replace(/#ffffff/g, colors.active)
-          .replace(/#ffffff8a/g, `${colors.primary}`),
-        backgroundClip: 'text',
-        WebkitBackgroundClip: 'text',
-        color: 'transparent'
-      };
-    } else {
-      return {
-        // 聚焦模式下当前行使用全亮文字色（Apple Music 观感），其余行维持半透明
-        color: focusOn ? colors.active : colors.primary
-      };
-    }
+  if (index !== nowIndex.value) {
+    return {
+      color: colors.primary
+    };
   }
 
-  // 非当前播放的歌词，使用普通颜色
+  const currentTime = nowTime.value + (correctionTime.value || 0);
+  const start = lrcTimeArray.value[index] || 0;
+  const end = lrcTimeArray.value[index + 1] ?? start + 1;
+
+  if (currentTime >= start && currentTime < end && end > start) {
+    const progress = Math.min(
+      Math.max(((currentTime - start) / (end - start)) * 100, 0),
+      100
+    ).toFixed(1);
+    return {
+      backgroundImage: `linear-gradient(to right, ${colors.active} 0%, ${colors.active} ${progress}%, ${colors.primary} ${progress}%, ${colors.primary} 100%)`,
+      backgroundClip: 'text',
+      WebkitBackgroundClip: 'text',
+      color: 'transparent',
+      willChange: 'background-image'
+    };
+  }
+
   return {
-    color: colors.primary
+    color: focusOn ? colors.active : colors.primary
   };
 };
 
@@ -623,16 +627,16 @@ const getWordStyle = (lineIndex: number, _wordIndex: number, word: any) => {
 
   const colors = textColors.value || getTextColors();
   // 当前行的逐字效果，应用歌词矫正时间
-  const currentTime = (nowTime.value + correctionTime.value) * 1000; // 转换为毫秒，确保与word时间单位一致
+  const currentTime = (nowTime.value + (correctionTime.value || 0)) * 1000;
 
-  // 直接使用绝对时间比较
-  const wordStartTime = word.startTime; // 单词开始的绝对时间（毫秒）
-  const wordEndTime = word.startTime + word.duration;
+  const wordStartTime = word.startTime;
+  const wordDuration = word.duration || 1;
+  const wordEndTime = wordStartTime + wordDuration;
 
   if (currentTime >= wordStartTime && currentTime < wordEndTime) {
-    // 当前正在播放的单词 - 使用渐变进度效果
-    const progress = Math.min((currentTime - wordStartTime) / word.duration, 1);
-    const progressPercent = Math.round(progress * 100);
+    // 当前正在播放的单词 - 使用渐变进度效果（0.1% 亚像素平滑度）
+    const progress = Math.min(Math.max((currentTime - wordStartTime) / wordDuration, 0), 1);
+    const progressPercent = (progress * 100).toFixed(1);
 
     return {
       backgroundImage: `linear-gradient(to right, ${colors.active} 0%, ${colors.active} ${progressPercent}%, ${colors.primary} ${progressPercent}%, ${colors.primary} 100%)`,
@@ -640,21 +644,19 @@ const getWordStyle = (lineIndex: number, _wordIndex: number, word: any) => {
       WebkitBackgroundClip: 'text',
       WebkitTextFillColor: 'transparent',
       textShadow: `0 0 8px ${colors.active}40`,
-      transition: 'all 0.1s ease'
+      willChange: 'background-image'
     };
   } else if (currentTime >= wordEndTime) {
     // 已经播放过的单词 - 纯色显示
     return {
       color: colors.active,
-      WebkitTextFillColor: 'initial',
-      transition: 'none'
+      WebkitTextFillColor: 'initial'
     };
   } else {
     // 还未播放的单词 - 普通状态
     return {
       color: colors.primary,
-      WebkitTextFillColor: 'initial',
-      transition: 'none'
+      WebkitTextFillColor: 'initial'
     };
   }
 };

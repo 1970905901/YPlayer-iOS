@@ -693,9 +693,11 @@ class AudioService {
   public seek(time: number) {
     this.forceResetOperationLock();
     try {
-      this.emit('seek_start', time);
-      this.audio.currentTime = Math.max(0, time);
+      const targetTime = Math.max(0, time);
+      this.emit('seek_start', targetTime);
+      this.audio.currentTime = targetTime;
       this.updateMediaSessionPositionState();
+      this.emit('seek', targetTime);
     } catch (error) {
       console.error('Seek操作失败:', error);
     }

@@ -407,14 +407,15 @@ import {
   allTime,
   artistList,
   correctionTime,
+  getLrcIndex,
   lrcArray,
+  lrcTimeArray,
   nowIndex,
   nowTime,
   playMusic,
   setAudioTime,
   sound,
-  textColors,
-  useLyricProgress
+  textColors
 } from '@/hooks/MusicHook';
 import { useArtist } from '@/hooks/useArtist';
 import { useLyricBackground } from '@/hooks/useLyricBackground';
@@ -612,21 +613,25 @@ const scrollToCurrentLyric = (immediate = false, customScrollerRef?: HTMLElement
 
 // 监听歌词变化，自动滚动
 watch(nowIndex, (newIndex, oldIndex) => {
-  console.log(`歌词索引变化: ${oldIndex} -> ${newIndex}`);
+  // 如果播放页未打开，跳过滚动计算
+  if (!isVisible.value) return;
 
   // 歌曲切换时不自动滚动
   if (isSongChanging.value) return;
 
+  // 大跨度跳转（快进/快退/seek），使用 immediate = true（立即瞬间滚动到目标行，不经历缓慢过渡）
+  const isLargeJump = Math.abs((newIndex ?? 0) - (oldIndex ?? 0)) > 1;
+
   // 在竖屏全屏歌词模式下滚动
   if (showFullLyrics.value) {
     nextTick(() => {
-      scrollToCurrentLyric(false);
+      scrollToCurrentLyric(isLargeJump);
     });
   }
   // 在横屏模式下滚动
   else if (isLandscape.value) {
     nextTick(() => {
-      scrollToCurrentLyric(false, landscapeLyricsRef.value);
+      scrollToCurrentLyric(isLargeJump, landscapeLyricsRef.value);
     });
   }
 });
@@ -750,13 +755,16 @@ const handleProgressBarClick = (e: MouseEvent) => {
   const offsetX = e.clientX - rect.left;
   progressContainerWidth.value = rect.width;
 
-  const percentage = offsetX / rect.width;
+  const percentage = Math.max(0, Math.min(1, offsetX / rect.width));
   const newTime = Math.max(0, Math.min(percentage * allTime.value, allTime.value));
 
-  console.log(`进度条点击: ${percentage.toFixed(2)}, 新时间: ${newTime.toFixed(2)}`);
-
-  audioService.seek(newTime);
   nowTime.value = newTime;
+  nowIndex.value = getLrcIndex(newTime);
+  audioService.seek(newTime);
+
+  nextTick(() => {
+    scrollToCurrentLyric(true);
+  });
 };
 
 // 鼠标按下事件
@@ -778,7 +786,10 @@ const handleMouseDown = (e: MouseEvent) => {
     const newTime = percentage * allTime.value;
 
     nowTime.value = newTime;
-    console.log(`鼠标按下，位置: ${percentage.toFixed(2)}, 时间: ${newTime.toFixed(2)}秒`);
+    const previewIdx = getLrcIndex(newTime);
+    if (previewIdx !== nowIndex.value) {
+      nowIndex.value = previewIdx;
+    }
   }
 
   // 添加全局鼠标事件监听
@@ -805,7 +816,10 @@ const handleMouseMove = (e: MouseEvent) => {
   const newTime = percentage * allTime.value;
 
   nowTime.value = newTime;
-  console.log(`鼠标移动，位置: ${percentage.toFixed(2)}, 时间: ${newTime.toFixed(2)}秒`);
+  const previewIdx = getLrcIndex(newTime);
+  if (previewIdx !== nowIndex.value) {
+    nowIndex.value = previewIdx;
+  }
 };
 
 // 鼠标释放事件
@@ -814,11 +828,13 @@ const handleMouseUp = (e: MouseEvent) => {
 
   e.preventDefault();
 
-  // 释放时跳转到指定位置
   audioService.seek(nowTime.value);
-  console.log(`鼠标释放，跳转到: ${nowTime.value.toFixed(2)}秒`);
-
+  nowIndex.value = getLrcIndex(nowTime.value);
   isMouseDragging.value = false;
+
+  nextTick(() => {
+    scrollToCurrentLyric(true);
+  });
 
   // 移除全局事件监听
   document.removeEventListener('mousemove', handleMouseMove);
@@ -836,7 +852,6 @@ const handleThumbTouchStart = (e: TouchEvent) => {
   const progressBar = target.parentElement?.parentElement as HTMLElement;
   if (progressBar) {
     progressContainerWidth.value = progressBar.getBoundingClientRect().width;
-    console.log(`进度条宽度: ${progressContainerWidth.value}px`);
   }
 };
 
@@ -855,10 +870,12 @@ const handleThumbTouchMove = (e: TouchEvent) => {
   const percentage = Math.max(0, Math.min(1, offsetX / rect.width));
   const newTime = percentage * allTime.value;
 
-  // 实时更新UI，但不频繁seek
+  // 实时更新UI，同时预览对应歌词
   nowTime.value = newTime;
-
-  console.log(`thumb拖动: ${percentage.toFixed(2)}, 时间: ${newTime.toFixed(2)}`);
+  const previewIdx = getLrcIndex(newTime);
+  if (previewIdx !== nowIndex.value) {
+    nowIndex.value = previewIdx;
+  }
 };
 
 const handleThumbTouchEnd = (e: TouchEvent) => {
@@ -867,10 +884,14 @@ const handleThumbTouchEnd = (e: TouchEvent) => {
   e.preventDefault(); // 阻止默认行为
   e.stopPropagation(); // 阻止事件冒泡
 
-  // 拖动结束时执行seek操作
-  console.log(`拖动结束，跳转到: ${nowTime.value.toFixed(2)}秒`);
+  // 拖动结束时执行seek操作并瞬时对齐歌词
   audioService.seek(nowTime.value);
+  nowIndex.value = getLrcIndex(nowTime.value);
   isThumbDragging.value = false;
+
+  nextTick(() => {
+    scrollToCurrentLyric(true);
+  });
 };
 
 // 背景相关（由 composable 管理）
@@ -1162,38 +1183,35 @@ watch(isVisible, (newVal) => {
   }
 });
 
-// 添加getLrcStyle函数
-const { getLrcStyle: originalLrcStyle } = useLyricProgress();
-
-// 修改 getLrcStyle 函数
+// 歌词样式函数 (优化性能，直接生成颜色渐变，避免频繁正则替换与GC压力)
 const getLrcStyle = (index: number) => {
   const colors = textColors.value || getTextColors();
-  const originalStyle = originalLrcStyle(index);
-
-  if (index === nowIndex.value) {
-    // 当前播放的歌词，使用渐变效果
-    // 只有原始样式包含 backgroundImage 时才设置 color: transparent
-    // 否则前奏阶段文字会因 transparent 而不可见
-    if (originalStyle.backgroundImage) {
-      return {
-        ...originalStyle,
-        backgroundImage: originalStyle.backgroundImage
-          .replace(/#ffffff/g, colors.active)
-          .replace(/#ffffff8a/g, `${colors.primary}`),
-        backgroundClip: 'text',
-        WebkitBackgroundClip: 'text',
-        color: 'transparent'
-      };
-    }
-    // 当前行但播放时间未到（前奏/间奏），用高亮色显示
+  if (index !== nowIndex.value) {
     return {
-      color: colors.active
+      color: colors.primary
     };
   }
 
-  // 非当前播放的歌词，使用普通颜色
+  const currentTime = nowTime.value + (correctionTime.value || 0);
+  const start = lrcTimeArray.value[index] || 0;
+  const end = lrcTimeArray.value[index + 1] ?? start + 1;
+
+  if (currentTime >= start && currentTime < end && end > start) {
+    const progress = Math.min(
+      Math.max(((currentTime - start) / (end - start)) * 100, 0),
+      100
+    ).toFixed(1);
+    return {
+      backgroundImage: `linear-gradient(to right, ${colors.active} 0%, ${colors.active} ${progress}%, ${colors.primary} ${progress}%, ${colors.primary} 100%)`,
+      backgroundClip: 'text',
+      WebkitBackgroundClip: 'text',
+      color: 'transparent',
+      willChange: 'background-image'
+    };
+  }
+
   return {
-    color: colors.primary
+    color: colors.active
   };
 };
 
@@ -1203,28 +1221,30 @@ const staticNonActiveWordStyle = Object.freeze({
   WebkitTextFillColor: 'initial'
 });
 
-// 逐字歌词样式函数 (优化性能，仅对当前播放行进行毫秒级渐变计算)
+// 逐字歌词样式函数 (优化性能，仅对当前播放行进行毫秒级亚像素渐变计算)
 const getWordStyle = (lineIndex: number, _wordIndex: number, word: any) => {
-  // 如果不是当前行，直接返回冻结的静态属性，防止每帧对数百个单词分配垃圾对象与重绘
+  // 如果不是当前行，直接返回冻结的静态属性，防止每帧对数百个单词分配垃圾对象与频繁重绘
   if (lineIndex !== nowIndex.value) {
     return staticNonActiveWordStyle;
   }
 
   const colors = textColors.value || getTextColors();
-  const currentTime = (nowTime.value + correctionTime.value) * 1000;
+  const currentTime = (nowTime.value + (correctionTime.value || 0)) * 1000;
   const wordStartTime = word.startTime;
-  const wordEndTime = word.startTime + word.duration;
+  const wordDuration = word.duration || 1;
+  const wordEndTime = wordStartTime + wordDuration;
 
   if (currentTime >= wordStartTime && currentTime < wordEndTime) {
-    const progress = Math.min((currentTime - wordStartTime) / word.duration, 1);
-    const progressPercent = Math.round(progress * 100);
+    const progress = Math.min(Math.max((currentTime - wordStartTime) / wordDuration, 0), 1);
+    const progressPercent = (progress * 100).toFixed(1);
 
     return {
       backgroundImage: `linear-gradient(to right, ${colors.active} 0%, ${colors.active} ${progressPercent}%, ${colors.primary} ${progressPercent}%, ${colors.primary} 100%)`,
       backgroundClip: 'text',
       WebkitBackgroundClip: 'text',
       WebkitTextFillColor: 'transparent',
-      textShadow: `0 0 8px ${colors.active}40`
+      textShadow: `0 0 8px ${colors.active}40`,
+      willChange: 'background-image'
     };
   } else if (currentTime >= wordEndTime) {
     return {

@@ -96,7 +96,7 @@
       @mouseleave="handleProgressLeave"
     >
       <div class="progress-track"></div>
-      <div class="progress-fill" :style="{ width: `${(nowTime / allTime) * 100}%` }"></div>
+      <div class="progress-fill" :style="{ width: `${progressPercent}%` }"></div>
     </div>
 
     <!-- 播放列表 - 单独放在外层，不再使用 popover -->
@@ -251,11 +251,18 @@ const handleArtistClick = (id: number) => {
 };
 
 // 进度条相关
+const progressPercent = computed(() => {
+  if (!allTime.value || allTime.value <= 0) return 0;
+  return Math.min(Math.max((nowTime.value / allTime.value) * 100, 0), 100);
+});
+
 const handleProgressClick = (e: MouseEvent) => {
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-  const percent = (e.clientX - rect.left) / rect.width;
-  audioService.seek(allTime.value * percent);
-  nowTime.value = allTime.value * percent;
+  if (rect.width <= 0) return;
+  const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  const targetTime = (allTime.value || 0) * percent;
+  audioService.seek(targetTime);
+  nowTime.value = targetTime;
 };
 
 const hoverTime = ref(0);
@@ -263,8 +270,9 @@ const isHovering = ref(false);
 
 const handleProgressHover = (e: MouseEvent) => {
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-  const percent = (e.clientX - rect.left) / rect.width;
-  hoverTime.value = allTime.value * percent;
+  if (rect.width <= 0) return;
+  const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  hoverTime.value = (allTime.value || 0) * percent;
   isHovering.value = true;
 };
 

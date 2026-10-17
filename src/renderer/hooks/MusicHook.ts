@@ -306,9 +306,9 @@ const setupAudioListeners = () => {
   };
 
   const getDynamicIntervalDelay = () => {
-    // 后台播放模式下使用 300ms 间隔，减少 83% 的定时器唤醒与 CPU 占用，极大延长移动端电池续航；
+    // 后台播放模式下使用 1000ms 间隔，减少 95% 的定时器唤醒与 CPU 占用，极大延长移动端电池续航；
     // 前台时采用 50ms 间隔，保证逐字歌词与进度条毫秒级流畅。
-    return typeof document !== 'undefined' && document.hidden ? 300 : 50;
+    return typeof document !== 'undefined' && document.hidden ? 1000 : 50;
   };
 
   /**
@@ -360,7 +360,8 @@ const setupAudioListeners = () => {
         // === 逐字歌词行内进度 ===
         const { start, end } = currentLrcTiming.value;
         if (typeof start === 'number' && typeof end === 'number' && start !== end) {
-          const elapsed = currentTime - start;
+          const corrected = currentTime + (correctionTime.value || 0);
+          const elapsed = corrected - start;
           const duration = end - start;
           const progress = (elapsed / duration) * 100;
           currentLrcProgress.value = Math.min(Math.max(progress, 0), 100);
@@ -446,40 +447,53 @@ const setupAudioListeners = () => {
     document.addEventListener('visibilitychange', () => {
       const store = getPlayerStore();
       if (store.play) {
+        if (!document.hidden) {
+          // 切回前台立即执行一次精确校准，并恢复高精度 50ms 循环
+          updateCurrentTimeAndDuration();
+          const curTime = sound.value?.currentTime ?? nowTime.value;
+          nowIndex.value = getLrcIndex(curTime);
+        }
         startProgressInterval();
       }
     });
   }
 
-  // 监听seek开始事件，立即更新UI
-  audioService.on('seek_start', (time) => {
-    // 直接更新显示位置，不检查拖动状态
+  // 监听seek开始事件，立即无缝同步当前时间与歌词索引
+  audioService.on('seek_start', (time: number) => {
     nowTime.value = time;
+    const newIdx = getLrcIndex(time);
+    nowIndex.value = newIdx;
+
+    const corrected = time + (correctionTime.value || 0);
+    const start = lrcTimeArray.value[newIdx] || 0;
+    const end = lrcTimeArray.value[newIdx + 1] || start + 1;
+    if (end > start) {
+      const progress = ((corrected - start) / (end - start)) * 100;
+      currentLrcProgress.value = Math.min(Math.max(progress, 0), 100);
+    } else {
+      currentLrcProgress.value = 0;
+    }
   });
 
-  // 监听seek完成事件
-  audioService.on('seek', () => {
+  // 监听seek完成事件，以真实音频时间做最终精准校准
+  audioService.on('seek', (seekTime?: number) => {
     try {
       const currentSound = audioService.getCurrentSound();
-      if (currentSound) {
-        // 立即更新显示时间，不进行任何检查
-        const currentTime = currentSound.currentTime;
-        if (typeof currentTime === 'number' && !Number.isNaN(currentTime)) {
-          nowTime.value = currentTime;
+      const currentTime =
+        typeof seekTime === 'number' ? seekTime : (currentSound?.currentTime ?? nowTime.value);
+      if (typeof currentTime === 'number' && !Number.isNaN(currentTime)) {
+        nowTime.value = currentTime;
 
-          // === MPRIS seek 时同步进度 ===
-          if (isElectron) {
-            window.electron.ipcRenderer.send('mpris-position-update', currentTime);
-          }
+        // === MPRIS seek 时同步进度 ===
+        if (isElectron) {
+          window.electron.ipcRenderer.send('mpris-position-update', currentTime);
+        }
 
-          // 检查是否需要更新歌词
-          const newIndex = getLrcIndex(nowTime.value);
-          if (newIndex !== nowIndex.value) {
-            nowIndex.value = newIndex;
-            if (isElectron && isLyricWindowOpen.value) {
-              sendLyricToWin();
-            }
-          }
+        // 检查是否需要更新歌词
+        const newIndex = getLrcIndex(currentTime);
+        nowIndex.value = newIndex;
+        if (isElectron && isLyricWindowOpen.value) {
+          sendLyricToWin();
         }
       }
     } catch (error) {
@@ -670,40 +684,54 @@ export const isCurrentLrc = (index: number, time: number): boolean => {
 
   // 如果是最后一句歌词，只需要判断时间是否大于等于当前句的开始时间
   if (index === lrcTimeArray.value.length - 1) {
-    const correctedTime = time + correctionTime.value;
+    const correctedTime = time + (correctionTime.value || 0);
     return correctedTime >= currentTime;
   }
 
   // 非最后一句歌词，需要判断时间在当前句和下一句之间
   const nextTime = lrcTimeArray.value[index + 1];
-  const correctedTime = time + correctionTime.value;
+  const correctedTime = time + (correctionTime.value || 0);
   return correctedTime >= currentTime && correctedTime < nextTime;
 };
 
-// 获取当前播放歌词INDEX
+// 获取当前播放歌词INDEX（高效二分查找，毫秒级快速精准定位）
 export const getLrcIndex = (time: number): number => {
-  const correctedTime = time + correctionTime.value;
-
-  // 如果歌词数组为空，返回当前索引
-  if (lrcTimeArray.value.length === 0) {
-    return nowIndex.value;
+  const times = lrcTimeArray.value;
+  const len = times.length;
+  if (len === 0) {
+    return 0;
   }
 
-  // 处理最后一句歌词的情况
-  const lastIndex = lrcTimeArray.value.length - 1;
-  if (correctedTime >= lrcTimeArray.value[lastIndex]) {
+  const correctedTime = time + (correctionTime.value || 0);
+
+  // 第一句歌词之前（前奏阶段）
+  if (correctedTime < times[0]) {
+    nowIndex.value = 0;
+    return 0;
+  }
+
+  // 超过最后一句歌词
+  const lastIndex = len - 1;
+  if (correctedTime >= times[lastIndex]) {
     nowIndex.value = lastIndex;
     return lastIndex;
   }
 
-  // 查找当前时间对应的歌词索引
-  for (let i = 0; i < lrcTimeArray.value.length - 1; i++) {
-    const currentTime = lrcTimeArray.value[i];
-    const nextTime = lrcTimeArray.value[i + 1];
+  // 二分查找 O(log N)
+  let low = 0;
+  let high = lastIndex;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const curTime = times[mid];
+    const nextTime = times[mid + 1];
 
-    if (correctedTime >= currentTime && correctedTime < nextTime) {
-      nowIndex.value = i;
-      return i;
+    if (correctedTime >= curTime && (nextTime === undefined || correctedTime < nextTime)) {
+      nowIndex.value = mid;
+      return mid;
+    } else if (correctedTime < curTime) {
+      high = mid - 1;
+    } else {
+      low = mid + 1;
     }
   }
 
@@ -717,21 +745,24 @@ const currentLrcTiming = computed(() => {
   return { start, end };
 });
 
-// 获取歌词样式
+// 获取歌词样式（纯行歌词渐变计算）
 export const getLrcStyle = (index: number) => {
-  const currentTime = nowTime.value + correctionTime.value;
+  const currentTime = nowTime.value + (correctionTime.value || 0);
   const start = lrcTimeArray.value[index];
   const end = lrcTimeArray.value[index + 1] ?? start + 1;
 
-  if (currentTime >= start && currentTime < end) {
-    // 当前句，显示进度
-    const progress = ((currentTime - start) / (end - start)) * 100;
+  if (currentTime >= start && currentTime < end && end > start) {
+    // 当前句，显示进度（0.1% 亚像素平滑度）
+    const progress = Math.min(
+      Math.max(((currentTime - start) / (end - start)) * 100, 0),
+      100
+    ).toFixed(1);
     return {
-      backgroundImage: `linear-gradient(to right, #ffffff ${progress}%, #ffffff8a ${progress}%)`,
+      backgroundImage: `linear-gradient(to right, #ffffff 0%, #ffffff ${progress}%, #ffffff8a ${progress}%, #ffffff8a 100%)`,
       backgroundClip: 'text',
       WebkitBackgroundClip: 'text',
       color: 'transparent',
-      transition: 'background-image 0.1s linear'
+      willChange: 'background-image'
     };
   }
   // 其它句
@@ -740,19 +771,28 @@ export const getLrcStyle = (index: number) => {
 
 // 播放进度
 export const useLyricProgress = () => {
-  // 如果已经在全局更新进度，立即返回
   return {
     getLrcStyle
   };
 };
 
-// 设置当前播放时间
+// 设置当前播放时间（点击歌词跳转）
 export const setAudioTime = (index: number) => {
-  const currentSound = sound.value;
-  if (!currentSound) return;
+  const currentSound = sound.value || audioService.getCurrentSound();
+  const rawTargetTime = lrcTimeArray.value[index];
+  if (typeof rawTargetTime !== 'number') return;
 
-  audioService.seek(lrcTimeArray.value[index]);
-  currentSound.play();
+  const targetTime = Math.max(0, rawTargetTime - (correctionTime.value || 0));
+
+  // 立即将时间、索引及行内进度响应到点击的歌词，彻底消除跳转延迟感
+  nowTime.value = targetTime;
+  nowIndex.value = index;
+  currentLrcProgress.value = 0;
+
+  audioService.seek(targetTime);
+  if (currentSound && currentSound.paused) {
+    currentSound.play();
+  }
 };
 
 // 获取当前播放的歌词

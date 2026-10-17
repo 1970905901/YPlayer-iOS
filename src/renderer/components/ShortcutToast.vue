@@ -66,7 +66,7 @@ defineExpose({
 
 <style lang="scss" scoped>
 .shortcut-toast {
-  @apply fixed left-1/2 z-[9999];
+  @apply fixed left-1/2 z-[100030];
   @apply flex items-center justify-center;
 
   // 位置变体

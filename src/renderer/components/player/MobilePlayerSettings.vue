@@ -3,7 +3,7 @@
     <Transition name="settings-drawer">
       <div
         v-if="visible"
-        class="fixed inset-0 z-[99999] flex items-end justify-center"
+        class="fixed inset-0 z-[100020] flex items-end justify-center"
         @click.self="close"
       >
         <!-- 遮罩层 -->

@@ -33,6 +33,8 @@ final class NowPlayingManager {
     private var isCurrentlyPlaying: Bool = false
 
     private init() {
+        // 限制内存缓存仅保存 1 首当前播放歌曲的封面，切换下一首后立即释放上一首位图
+        imageCache.countLimit = 1
         if Thread.isMainThread {
             self.screenScale = UIScreen.main.scale
         } else {
@@ -248,6 +250,7 @@ final class NowPlayingManager {
         if info.artworkUrl.isEmpty {
             cachedArtwork = nil
             currentArtworkUrl = nil
+            imageCache.removeAllObjects()
         } else if info.artworkUrl != currentArtworkUrl {
             currentArtworkUrl = info.artworkUrl
             // 检查内存图片缓存，若已存在则直接构造 Artwork 避免空白与延迟
@@ -329,8 +332,6 @@ final class NowPlayingManager {
                 return
             }
 
-            self.imageCache.setObject(image, forKey: urlString as NSString)
-
             DispatchQueue.main.async {
                 self.applyArtwork(image, for: urlString)
             }
@@ -340,6 +341,11 @@ final class NowPlayingManager {
     /// 应用封面并通知系统媒体中心
     private func applyArtwork(_ image: UIImage, for urlString: String) {
         guard currentArtworkUrl == urlString else { return }
+
+        // 播放下一首歌曲封面就绪后，主动释放上一首歌曲的内存缓存，杜绝常驻内存堆积
+        imageCache.removeAllObjects()
+        imageCache.setObject(image, forKey: urlString as NSString)
+
         let artwork = createArtwork(from: image)
         cachedArtwork = artwork
 

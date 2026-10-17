@@ -2,7 +2,7 @@
   <div class="hero-section mb-6 md:mb-10">
     <!-- Skeleton Loading -->
     <div v-if="loading" class="space-y-4">
-      <div class="flex gap-1.5 overflow-hidden md:hidden">
+      <div class="flex gap-1.5 overflow-hidden pt-3.5 md:hidden">
         <div v-for="i in 6" :key="i" class="h-9 w-20 flex-shrink-0 skeleton-shimmer rounded-full" />
       </div>
       <div class="hero-grid grid gap-3">
@@ -14,7 +14,7 @@
     <!-- Main Content -->
     <div v-else class="space-y-4">
       <!-- Quick Navigation (mobile only) -->
-      <nav class="scrollbar-hide flex gap-1.5 overflow-x-auto pb-0.5 md:hidden">
+      <nav class="scrollbar-hide flex gap-1.5 overflow-x-auto pt-3.5 pb-1 md:hidden">
         <button
           v-for="(item, index) in quickNavItems"
           :key="item.key"
@@ -57,10 +57,14 @@
             <div class="absolute inset-0 bg-gradient-to-r from-black/70 via-black/40 to-black/20" />
 
             <!-- Content -->
-            <div class="relative flex h-full flex-col justify-between p-3.5 md:p-6 min-w-0 overflow-hidden">
+            <div
+              class="relative flex h-full flex-col justify-between p-3.5 md:p-6 min-w-0 overflow-hidden"
+            >
               <!-- Top: Title + Badge -->
               <div class="min-w-0">
-                <h3 class="truncate text-lg md:text-2xl lg:text-3xl font-black leading-tight tracking-wider text-white">
+                <h3
+                  class="truncate text-lg md:text-2xl lg:text-3xl font-black leading-tight tracking-wider text-white"
+                >
                   {{ t('comp.homeHero.dailyRecommend') }}
                 </h3>
                 <span
@@ -125,7 +129,9 @@
             <div class="absolute inset-0 bg-gradient-to-br from-black/10 to-black/30" />
 
             <!-- Content -->
-            <div class="relative flex h-full items-center gap-2.5 md:gap-4 p-3 md:p-5 min-w-0 overflow-hidden">
+            <div
+              class="relative flex h-full items-center gap-2.5 md:gap-4 p-3 md:p-5 min-w-0 overflow-hidden"
+            >
               <!-- Album Cover -->
               <div
                 class="fm-cover relative aspect-square flex-shrink-0 overflow-hidden rounded-xl shadow-md transition-transform duration-500 group-hover:scale-[1.03]"
@@ -140,7 +146,10 @@
                   <i class="ri-radio-fill text-2xl md:text-3xl text-white/40" />
                 </div>
                 <!-- Playing equalizer overlay on cover -->
-                <div v-if="isFmPlaying" class="absolute bottom-1.5 right-1.5 md:bottom-2 md:right-2 flex items-end gap-[2px]">
+                <div
+                  v-if="isFmPlaying"
+                  class="absolute bottom-1.5 right-1.5 md:bottom-2 md:right-2 flex items-end gap-[2px]"
+                >
                   <span
                     v-for="i in 3"
                     :key="i"
@@ -151,7 +160,9 @@
               </div>
 
               <!-- Song Info & Controls -->
-              <div class="flex min-w-0 flex-1 flex-col justify-between self-stretch py-0.5 overflow-hidden">
+              <div
+                class="flex min-w-0 flex-1 flex-col justify-between self-stretch py-0.5 overflow-hidden"
+              >
                 <div class="min-w-0 overflow-hidden">
                   <h3 class="truncate text-sm md:text-lg font-bold text-white">
                     {{ fmCurrentSong?.name || t('comp.homeHero.discoverMusic') }}
@@ -189,7 +200,9 @@
                   </div>
 
                   <!-- FM Badge -->
-                  <span class="hidden sm:flex items-center gap-1 text-[11px] md:text-xs font-semibold text-white/50 truncate">
+                  <span
+                    class="hidden sm:flex items-center gap-1 text-[11px] md:text-xs font-semibold text-white/50 truncate"
+                  >
                     <i class="ri-radio-fill" />
                     {{ t('comp.homeHero.personalFm') }}
                   </span>

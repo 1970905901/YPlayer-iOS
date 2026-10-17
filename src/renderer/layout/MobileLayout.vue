@@ -124,7 +124,8 @@ provide('openPlaylistDrawer', openPlaylistDrawer);
 .mobile-bottom-menu {
   @apply bg-light dark:bg-black;
   @apply border-t border-gray-200 dark:border-gray-800;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-top: 2px;
+  padding-bottom: max(calc(env(safe-area-inset-bottom, 0px) - 12px), 6px);
 }
 
 .mobile-menu {

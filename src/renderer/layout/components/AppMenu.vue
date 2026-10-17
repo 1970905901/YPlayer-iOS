@@ -183,17 +183,19 @@ const toggleMenu = () => {
     }
 
     &-list {
-      @apply flex justify-between px-4;
+      @apply flex justify-between px-4 items-center;
       max-height: none !important; /* 移动端不限制高度 */
       overflow: visible !important; /* 移动端不需要滚动 */
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
     }
 
     &-item {
       &-link {
-        @apply my-2 w-auto px-2;
+        @apply w-auto px-2;
         width: auto !important;
-        margin-top: 8px;
-        margin-bottom: 8px;
+        margin-top: 6px !important;
+        margin-bottom: 4px !important;
       }
     }
 

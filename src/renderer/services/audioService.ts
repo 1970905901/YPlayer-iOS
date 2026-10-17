@@ -207,12 +207,14 @@ class AudioService {
         { src: getTrackCoverUrl(track, '128y128'), type: 'image/jpeg', sizes: '128x128' }
       ];
 
-      navigator.mediaSession.metadata = new window.MediaMetadata({
-        title: combinedTitle,
-        artist: this.currentLyric || artistsStr || ' ', // 优先展示实时歌词，无歌词时回退歌手名，避免空字符串触发系统置灰
-        album: album || '',
-        artwork
-      });
+      if (!nativeBridge.isIOS) {
+        navigator.mediaSession.metadata = new window.MediaMetadata({
+          title: combinedTitle,
+          artist: this.currentLyric || artistsStr || ' ', // 优先展示实时歌词，无歌词时回退歌手名，避免空字符串触发系统置灰
+          album: album || '',
+          artwork
+        });
+      }
 
       // 每次切换歌曲时再次确保禁用 15 秒快进快退，激活上一首/下一首/播放/暂停核心交互
       try {
@@ -249,7 +251,7 @@ class AudioService {
   }
 
   private updateMediaSessionState(isPlaying: boolean) {
-    if ('mediaSession' in navigator) {
+    if (!nativeBridge.isIOS && 'mediaSession' in navigator) {
       navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
     }
     this.updateMediaSessionPositionState();
@@ -258,7 +260,12 @@ class AudioService {
 
   private updateMediaSessionPositionState() {
     try {
-      if ('mediaSession' in navigator && this.audio.duration && isFinite(this.audio.duration)) {
+      if (
+        !nativeBridge.isIOS &&
+        'mediaSession' in navigator &&
+        this.audio.duration &&
+        isFinite(this.audio.duration)
+      ) {
         if ('setPositionState' in navigator.mediaSession) {
           navigator.mediaSession.setPositionState({
             duration: this.audio.duration,

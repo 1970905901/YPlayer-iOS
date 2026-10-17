@@ -147,6 +147,9 @@ final class NowPlayingManager {
         info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
         info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         info[MPNowPlayingInfoPropertyIsLiveStream] = false
+        if let cached = cachedArtwork {
+            info[MPMediaItemPropertyArtwork] = cached
+        }
         currentInfo = info
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         dispatchRemoteCommand("play")
@@ -159,6 +162,9 @@ final class NowPlayingManager {
         info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
         info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         info[MPNowPlayingInfoPropertyIsLiveStream] = false
+        if let cached = cachedArtwork {
+            info[MPMediaItemPropertyArtwork] = cached
+        }
         currentInfo = info
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         dispatchRemoteCommand("pause")
@@ -175,6 +181,9 @@ final class NowPlayingManager {
     private func handleRemoteSeek(to position: Double) {
         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? currentInfo
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = position
+        if let cached = cachedArtwork {
+            info[MPMediaItemPropertyArtwork] = cached
+        }
         currentInfo = info
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         dispatchRemoteCommand("changePlaybackPosition", arg: position)
@@ -248,9 +257,12 @@ final class NowPlayingManager {
 
         // 如果封面 URL 发生改变且不为空，请求新封面图片
         if info.artworkUrl.isEmpty {
-            cachedArtwork = nil
-            currentArtworkUrl = nil
-            imageCache.removeAllObjects()
+            // 仅当当前非播放状态时才清空缓存，避免播放过程中短暂空 URL 触发清空
+            if !self.isCurrentlyPlaying {
+                cachedArtwork = nil
+                currentArtworkUrl = nil
+                imageCache.removeAllObjects()
+            }
         } else if info.artworkUrl != currentArtworkUrl {
             currentArtworkUrl = info.artworkUrl
             // 检查内存图片缓存，若已存在则直接构造 Artwork 避免空白与延迟
@@ -271,26 +283,22 @@ final class NowPlayingManager {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
     }
 
-    /// 构造具备动态尺寸适配与无损 Retina 超采样渲染能力的 MPMediaItemArtwork
+    /// 构造具备动态尺寸适配与无损超清渲染能力的 MPMediaItemArtwork
     private func createArtwork(from image: UIImage) -> MPMediaItemArtwork {
-        let scale = self.screenScale > 0 ? self.screenScale : 3.0
         return MPMediaItemArtwork(boundsSize: image.size) { targetSize in
             guard targetSize.width > 0 && targetSize.height > 0 else {
                 return image
             }
 
-            // 如果系统要求的尺寸恰好与原图一致，直接返回原图
-            if abs(targetSize.width - image.size.width) < 1 && abs(targetSize.height - image.size.height) < 1 {
+            // 当系统请求尺寸较大（如锁屏点击全屏展开大图 targetSize >= 300）或系统要求尺寸接近/大于原图时，
+            // 直接返回原图，由系统 GPU 进行全像素超清无损渲染，彻底解决放大模糊、不清晰问题！
+            if targetSize.width >= 300 || targetSize.width >= image.size.width {
                 return image
             }
 
-            // 针对控制中心、灵动岛、锁屏折叠卡片（如 50x50、60x60）以及锁屏展开大图（如 350x350）
-            // 必须使用 UIGraphicsImageRenderer 按系统 targetSize 和主屏 scale (@2x / @3x) 动态渲染。
-            // 既能满足 SpringBoard 的 targetSize 严格校验杜绝灰色空白方块，
-            // 又能在 Retina / Super Retina 屏幕上像素级对齐，呈现 100% 细腻清晰的超清画质！
-            let format = UIGraphicsImageRendererFormat.preferred()
-            format.scale = scale
-            format.opaque = false
+            // 针对控制中心、灵动岛、锁屏未展开小卡片等小尺寸（如 50x50、60x60、120x120），
+            // 必须按 targetSize 动态下采样渲染，杜绝 SpringBoard 因原图体积过大（4MB+）而直接拒显灰色方块！
+            let format = UIGraphicsImageRendererFormat.default()
             let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
             return renderer.image { _ in
                 let aspectWidth = targetSize.width / max(1, image.size.width)
@@ -308,8 +316,6 @@ final class NowPlayingManager {
     /// 异步请求专辑封面图片并生成 MPMediaItemArtwork
     private func loadArtwork(from urlString: String) {
         currentArtworkUrl = urlString
-        let secureUrlString = urlString.replacingOccurrences(of: "^http://", with: "https://", options: .regularExpression)
-        guard let url = URL(string: secureUrlString) ?? URL(string: secureUrlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "") else { return }
 
         // 检查内存缓存
         if let cachedImage = imageCache.object(forKey: urlString as NSString) {
@@ -317,18 +323,64 @@ final class NowPlayingManager {
             return
         }
 
+        // 1. 支持 base64 Data URL (本地导入或插件音乐封面)
+        if urlString.hasPrefix("data:image/") {
+            if let commaIndex = urlString.firstIndex(of: ",") {
+                let base64String = String(urlString[urlString.index(after: commaIndex)...])
+                if let data = Data(base64Encoded: base64String, options: .ignoreUnknownCharacters),
+                   let image = UIImage(data: data) {
+                    applyArtwork(image, for: urlString)
+                    return
+                }
+            }
+        }
+
+        // 2. 支持本地文件路径
+        if urlString.hasPrefix("file://"), let fileUrl = URL(string: urlString) {
+            if let image = UIImage(contentsOfFile: fileUrl.path) {
+                applyArtwork(image, for: urlString)
+                return
+            }
+        } else if urlString.hasPrefix("/") && FileManager.default.fileExists(atPath: urlString) {
+            if let image = UIImage(contentsOfFile: urlString) {
+                applyArtwork(image, for: urlString)
+                return
+            }
+        }
+
+        // 3. 网络图片 URL 预处理
+        var cleanUrlString = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleanUrlString.lowercased().hasPrefix("http://") {
+            cleanUrlString = "https://" + cleanUrlString.dropFirst(7)
+        }
+
+        guard let url = URL(string: cleanUrlString) ?? URL(string: cleanUrlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "") else {
+            print("[NowPlayingManager] 封面 URL 解析失败: \(urlString)")
+            return
+        }
+
         var request = URLRequest(url: url)
         request.cachePolicy = .returnCacheDataElseLoad
         request.timeoutInterval = 15
         request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
-        request.setValue("https://music.163.com", forHTTPHeaderField: "Referer")
-        request.setValue("image/webp,image/avif,image/jpeg,image/png,*/*", forHTTPHeaderField: "Accept")
 
-        URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
-            guard let self = self,
-                  let data = data,
-                  let image = UIImage(data: data),
-                  error == nil else {
+        // 仅网易云域名附带 163.com Referer，避免第三方 CDN (QQ音乐、B站、酷狗等) 报 403/404 防盗链错误
+        if let host = url.host?.lowercased(), host.contains("163.com") || host.contains("126.net") {
+            request.setValue("https://music.163.com", forHTTPHeaderField: "Referer")
+        }
+
+        // 优先请求标准 JPEG / PNG 格式，确保 UIImage(data:) 100% 成功解码
+        request.setValue("image/jpeg,image/png,image/*;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
+
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            if let error = error {
+                print("[NowPlayingManager] 封面网络请求失败: \(error.localizedDescription), URL: \(urlString)")
+                return
+            }
+            guard let data = data, let image = UIImage(data: data) else {
+                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+                print("[NowPlayingManager] 封面图片解码失败, 状态码: \(statusCode), 数据长度: \(data?.count ?? 0), URL: \(urlString)")
                 return
             }
 

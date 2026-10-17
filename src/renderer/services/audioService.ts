@@ -46,7 +46,9 @@ class AudioService {
   constructor() {
     // Create persistent audio element
     this.audio = new Audio();
-    this.audio.crossOrigin = 'anonymous';
+    if (isElectron) {
+      this.audio.crossOrigin = 'anonymous';
+    }
     this.audio.preload = 'auto';
 
     // Bind native DOM events
@@ -195,7 +197,7 @@ class AudioService {
 
       navigator.mediaSession.metadata = new window.MediaMetadata({
         title: combinedTitle,
-        artist: this.currentLyric || '', // 专属预留给动态滚动的单句歌词
+        artist: this.currentLyric || artistsStr || ' ', // 优先展示实时歌词，无歌词时回退歌手名，避免空字符串触发系统置灰
         album: album || '',
         artwork
       });

@@ -25,15 +25,20 @@ final class NowPlayingManager {
     private var cachedArtwork: MPMediaItemArtwork?
     private var currentInfo = [String: Any]()
 
+    private var baseArtist: String = ""
+    private var baseTitle: String = ""
+    private var currentLyric: String = ""
+    private var isCurrentlyPlaying: Bool = false
+
     private init() {
         setupRemoteCommands()
     }
 
-    /// 设置 MPRemoteCommandCenter 锁屏与灵动岛控制命令
+    /// 设置 MPRemoteCommandCenter 锁屏、控制中心与灵动岛控制命令
     private func setupRemoteCommands() {
         let commandCenter = MPRemoteCommandCenter.shared()
 
-        // 彻底停用快进/快退区间指令 (15s)
+        // 彻底停用快进/快退区间指令 (15s)，杜绝控制中心显示 15s 按钮
         commandCenter.skipForwardCommand.removeTarget(nil)
         commandCenter.skipBackwardCommand.removeTarget(nil)
         commandCenter.skipForwardCommand.preferredIntervals = []
@@ -45,6 +50,10 @@ final class NowPlayingManager {
         commandCenter.seekBackwardCommand.removeTarget(nil)
         commandCenter.seekForwardCommand.isEnabled = false
         commandCenter.seekBackwardCommand.isEnabled = false
+
+        // 彻底停用 togglePlayPauseCommand（苹果官方规范：与 playCommand/pauseCommand 同时启用会导致控制中心/灵动岛按钮置灰）
+        commandCenter.togglePlayPauseCommand.removeTarget(nil)
+        commandCenter.togglePlayPauseCommand.isEnabled = false
 
         // 启用上一首
         commandCenter.previousTrackCommand.removeTarget(nil)
@@ -62,27 +71,19 @@ final class NowPlayingManager {
             return .success
         }
 
-        // 启用播放指令
+        // 启用播放指令 (立即乐观更新 playbackRate 为 1.0，保证控制中心与灵动岛瞬时响应不置灰)
         commandCenter.playCommand.removeTarget(nil)
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { [weak self] _ in
-            self?.dispatchRemoteCommand("play")
+            self?.handleRemotePlay()
             return .success
         }
 
-        // 启用暂停指令
+        // 启用暂停指令 (立即乐观更新 playbackRate 为 0.0，保证控制中心与灵动岛瞬时响应不置灰)
         commandCenter.pauseCommand.removeTarget(nil)
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.addTarget { [weak self] _ in
-            self?.dispatchRemoteCommand("pause")
-            return .success
-        }
-
-        // 启用播放/暂停切换指令（线控/耳机按键支持）
-        commandCenter.togglePlayPauseCommand.removeTarget(nil)
-        commandCenter.togglePlayPauseCommand.isEnabled = true
-        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
-            self?.dispatchRemoteCommand("togglePlayPause")
+            self?.handleRemotePause()
             return .success
         }
 
@@ -91,7 +92,7 @@ final class NowPlayingManager {
         commandCenter.changePlaybackPositionCommand.isEnabled = true
         commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
             if let positionEvent = event as? MPChangePlaybackPositionCommandEvent {
-                self?.dispatchRemoteCommand("changePlaybackPosition", arg: positionEvent.positionTime)
+                self?.handleRemoteSeek(to: positionEvent.positionTime)
                 return .success
             }
             return .commandFailed
@@ -111,12 +112,47 @@ final class NowPlayingManager {
         commandCenter.seekForwardCommand.isEnabled = false
         commandCenter.seekBackwardCommand.isEnabled = false
 
+        commandCenter.togglePlayPauseCommand.removeTarget(nil)
+        commandCenter.togglePlayPauseCommand.isEnabled = false
+
         commandCenter.previousTrackCommand.isEnabled = true
         commandCenter.nextTrackCommand.isEnabled = true
         commandCenter.playCommand.isEnabled = true
         commandCenter.pauseCommand.isEnabled = true
-        commandCenter.togglePlayPauseCommand.isEnabled = true
         commandCenter.changePlaybackPositionCommand.isEnabled = true
+    }
+
+    private func handleRemotePlay() {
+        isCurrentlyPlaying = true
+        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? currentInfo
+        info[MPNowPlayingInfoPropertyPlaybackRate] = 1.0
+        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
+        info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+        info[MPNowPlayingInfoPropertyIsLiveStream] = false
+        currentInfo = info
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        try? AVAudioSession.sharedInstance().setActive(true)
+        dispatchRemoteCommand("play")
+    }
+
+    private func handleRemotePause() {
+        isCurrentlyPlaying = false
+        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? currentInfo
+        info[MPNowPlayingInfoPropertyPlaybackRate] = 0.0
+        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
+        info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+        info[MPNowPlayingInfoPropertyIsLiveStream] = false
+        currentInfo = info
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        dispatchRemoteCommand("pause")
+    }
+
+    private func handleRemoteSeek(to position: Double) {
+        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? currentInfo
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = position
+        currentInfo = info
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        dispatchRemoteCommand("changePlaybackPosition", arg: position)
     }
 
     /// 向前端分发远程事件
@@ -125,11 +161,6 @@ final class NowPlayingManager {
             self?.onCommandReceived?(command, arg)
         }
     }
-
-    private var baseArtist: String = ""
-    private var baseTitle: String = ""
-    private var currentLyric: String = ""
-    private var isCurrentlyPlaying: Bool = false
 
     /// 更新锁屏、控制中心与灵动岛实时单句歌词及同步播放进度
     func updateLyric(text: String, currentTime: Double? = nil, duration: Double? = nil) {
@@ -141,6 +172,8 @@ final class NowPlayingManager {
             guard let self = self else { return }
             var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? self.currentInfo
             info[MPMediaItemPropertyArtist] = trimmed
+            info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+            info[MPNowPlayingInfoPropertyIsLiveStream] = false
             if let currentTime = currentTime, currentTime >= 0 {
                 info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
             }
@@ -164,6 +197,11 @@ final class NowPlayingManager {
         currentLyric = ""
         isCurrentlyPlaying = info.isPlaying
 
+        // 切换不同曲目时重置封面缓存，避免展示上一首歌曲的封面
+        if info.artworkUrl != currentArtworkUrl {
+            cachedArtwork = nil
+        }
+
         enforceRemoteCommands()
 
         var nowPlayingInfo = [String: Any]()
@@ -171,7 +209,11 @@ final class NowPlayingManager {
         // 将歌手名放置在歌曲名后面（同字号、同粗细、同颜色显示在标题行）
         let combinedTitle = info.artist.isEmpty ? info.title : "\(info.title) - \(info.artist)"
         nowPlayingInfo[MPMediaItemPropertyTitle] = combinedTitle
-        nowPlayingInfo[MPMediaItemPropertyArtist] = "" // 专属预留给动态滚动的单句歌词
+
+        // 副标题展示：若当前有歌词则展示歌词，否则展示歌手名（或空格防空），确保 MediaPlayer 元数据完整不被系统置灰
+        let displayArtist = currentLyric.isEmpty ? (info.artist.isEmpty ? " " : info.artist) : currentLyric
+        nowPlayingInfo[MPMediaItemPropertyArtist] = displayArtist
+
         nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = info.album
         if info.duration > 0 {
             nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = info.duration
@@ -180,6 +222,10 @@ final class NowPlayingManager {
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = info.isPlaying ? (info.playbackRate > 0 ? info.playbackRate : 1.0) : 0.0
         nowPlayingInfo[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
 
+        // 显式声明媒体类型为 Audio 并声明非直播流，激活 iOS 16/17/18 灵动岛 (Dynamic Island) 实时活动与波形动画
+        nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+        nowPlayingInfo[MPNowPlayingInfoPropertyIsLiveStream] = false
+
         // 复用已缓存的封面，避免重复网络加载
         if let cached = cachedArtwork {
             nowPlayingInfo[MPMediaItemPropertyArtwork] = cached
@@ -187,6 +233,10 @@ final class NowPlayingManager {
 
         self.currentInfo = nowPlayingInfo
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+
+        if info.isPlaying {
+            try? AVAudioSession.sharedInstance().setActive(true)
+        }
 
         // 如果封面 URL 发生改变且不为空，后台异步请求封面图片
         if !info.artworkUrl.isEmpty && info.artworkUrl != currentArtworkUrl {
@@ -219,6 +269,8 @@ final class NowPlayingManager {
                 if self.currentArtworkUrl == urlString {
                     var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? self.currentInfo
                     info[MPMediaItemPropertyArtwork] = artwork
+                    info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+                    info[MPNowPlayingInfoPropertyIsLiveStream] = false
                     self.currentInfo = info
                     MPNowPlayingInfoCenter.default().nowPlayingInfo = info
                 }

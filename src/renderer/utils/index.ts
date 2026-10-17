@@ -87,17 +87,24 @@ export const getImgUrl = (url: string | undefined, size: string = '') => {
   // 保证 HTTPS 链接
   let cleanUrl = url.replace(/^http:\/\//i, 'https://');
 
+  if (!size) {
+    // 移除所有已有 thumbnail 和 param 尺寸限制参数，返回原始高清母版无损大图，保证锁屏点击放大封面与灵动岛展示极致清晰
+    cleanUrl = cleanUrl
+      .replace(/[?&]thumbnail=\d+y\d+/g, '')
+      .replace(/[?&]param=\d+y\d+/g, '')
+      .replace(/[?&]param=\d+/g, '')
+      .replace(/\?&/, '?')
+      .replace(/[?&]$/, '');
+    return cleanUrl;
+  }
+
   if (cleanUrl.includes('thumbnail=')) {
     // 替换现有的 thumbnail 尺寸参数
-    return cleanUrl.replace(/thumbnail=\d+y\d+(?!.*thumbnail)/, `thumbnail=${size}`);
+    return cleanUrl.replace(/thumbnail=\d+y\d+/, `thumbnail=${size}`);
   }
 
   // 移除已有 param 尺寸限制参数，防止重复拼接低清参数导致模糊
   cleanUrl = cleanUrl.replace(/[?&]param=\d+y\d+/g, '').replace(/[?&]param=\d+/g, '');
-
-  if (!size) {
-    return cleanUrl;
-  }
 
   const separator = cleanUrl.includes('?') ? '&' : '?';
   return `${cleanUrl}${separator}param=${size}`;

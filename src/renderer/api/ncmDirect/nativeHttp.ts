@@ -5,11 +5,17 @@ export interface NativeHttpResponse {
   status: number;
   data: string;
   headers?: Record<string, string>;
+  cookies?: string[];
   error?: string | null;
 }
 
 interface PendingHandler {
-  resolve: (res: { status: number; data: string; headers?: Record<string, string> }) => void;
+  resolve: (res: {
+    status: number;
+    data: string;
+    headers?: Record<string, string>;
+    cookies?: string[];
+  }) => void;
   reject: (err: any) => void;
   timer: any;
 }
@@ -30,7 +36,8 @@ if (typeof window !== 'undefined' && !(window as any).__nativeHttpInitialized) {
         handler.resolve({
           status: resp.status || 200,
           data: resp.data,
-          headers: resp.headers || {}
+          headers: resp.headers || {},
+          cookies: resp.cookies || []
         });
       }
     }
@@ -43,7 +50,12 @@ export const nativeHttpRequest = (options: {
   headers?: Record<string, string>;
   data?: string;
   timeout?: number;
-}): Promise<{ status: number; data: string; headers?: Record<string, string> }> => {
+}): Promise<{
+  status: number;
+  data: string;
+  headers?: Record<string, string>;
+  cookies?: string[];
+}> => {
   return new Promise((resolve, reject) => {
     const id = 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
     const timeout = options.timeout || 20000;
@@ -88,10 +100,13 @@ export const nativeHttpRequest = (options: {
         response.headers.forEach((v, k) => {
           headers[k.toLowerCase()] = v;
         });
+        const setCookie = response.headers.get('set-cookie');
+        const cookies: string[] = setCookie ? [setCookie] : [];
         resolve({
           status: response.status,
           data: text,
-          headers
+          headers,
+          cookies
         });
       })
       .catch((err) => {

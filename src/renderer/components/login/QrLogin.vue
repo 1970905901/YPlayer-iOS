@@ -99,15 +99,29 @@ const timerIsQr = (key: string) => {
 
       // 登录成功
       if (data.code === 803) {
-        qrStatus.value = 'confirmed';
-        localStorage.setItem('token', data.cookie);
-        const user = await getUserDetail();
-        const successMsg = t('login.message.loginSuccess');
-        message.success(successMsg);
-        emit('loginSuccess', user.data.profile, 'qr');
-
+        // 立即清除轮询定时器，防止在请求用户详情期间重复触发
         clearInterval(timer);
         timerRef.value = null;
+        qrStatus.value = 'confirmed';
+
+        if (data.cookie) {
+          localStorage.setItem('token', data.cookie);
+        }
+
+        const user = await getUserDetail();
+        const profile = user?.data?.profile || user?.data?.data?.profile;
+
+        if (profile) {
+          const successMsg = t('login.message.loginSuccess');
+          message.success(successMsg);
+          emit('loginSuccess', profile, 'qr');
+        } else {
+          console.error('扫码登录已确认但未解析到用户信息:', user);
+          qrStatus.value = 'expired';
+          const errorMsg = t('login.message.loginFailed');
+          message.error(errorMsg);
+          emit('loginError', errorMsg);
+        }
       }
     } catch (error) {
       console.error(t('login.message.qrCheckError'), error);

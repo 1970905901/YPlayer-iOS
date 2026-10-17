@@ -88,6 +88,13 @@ enum LoginMode {
   COOKIE = 'cookie'
 }
 
+interface Emits {
+  (e: 'loginSuccess', userProfile: any, loginType: string): void;
+  (e: 'loginError', error: string): void;
+}
+
+const emit = defineEmits<Emits>();
+
 const { t } = useI18n();
 const message = useMessage();
 const router = useRouter();
@@ -124,6 +131,8 @@ const loginPhone = async () => {
       userStore.setLoginType('token');
       localStorage.setItem('token', data.cookie);
 
+      emit('loginSuccess', data.profile, 'phone');
+
       try {
         const { useFavoriteStore } = await import('@/store/modules/favorite');
         const favoriteStore = useFavoriteStore();
@@ -138,8 +147,10 @@ const loginPhone = async () => {
       }
 
       setTimeout(() => {
-        router.push('/user');
-      }, 1000);
+        if (router.currentRoute.value.path !== '/user') {
+          router.push('/user');
+        }
+      }, 500);
     } else {
       message.error(t('login.message.phoneLoginFailed'));
     }
@@ -156,6 +167,8 @@ const switchToMode = (mode: LoginMode) => {
 
 // 通用登录成功处理
 const handleLoginSuccess = async (userProfile: any, loginType: string) => {
+  if (!userProfile) return;
+
   // 更新 userStore（这会同时更新 store 状态和 localStorage 中的用户数据）
   userStore.setUser(userProfile);
 
@@ -173,6 +186,9 @@ const handleLoginSuccess = async (userProfile: any, loginType: string) => {
     localStorage.setItem('uidLogin', 'true');
   }
 
+  // 向上层抛出登录成功事件（支持嵌套于 user 页面时及时响应）
+  emit('loginSuccess', userProfile, loginType);
+
   // 登录成功后立即同步网易云收藏与歌单
   try {
     const { useFavoriteStore } = await import('@/store/modules/favorite');
@@ -188,13 +204,16 @@ const handleLoginSuccess = async (userProfile: any, loginType: string) => {
   }
 
   setTimeout(() => {
-    router.push('/user');
-  }, 1000);
+    if (router.currentRoute.value.path !== '/user') {
+      router.push('/user');
+    }
+  }, 500);
 };
 
 // 通用登录错误处理
 const handleLoginError = (error: string) => {
   console.error(t('login.message.loginFailed') + ':', error);
+  emit('loginError', error);
 };
 </script>
 

@@ -26,8 +26,33 @@ export function getLoginStatus() {
 
 // 获取用户信息
 // /user/account
-export function getUserDetail() {
-  return request.get('/user/account');
+export async function getUserDetail() {
+  const res = await request.get('/user/account');
+  if (res?.data?.profile) {
+    return res;
+  }
+  // 如果没有 profile 但有 account 信息，构造 profile 兜底
+  if (res?.data?.account && !res?.data?.profile) {
+    res.data.profile = {
+      userId: res.data.account.id,
+      nickname: res.data.account.userName || '用户',
+      avatarUrl: res.data.account.avatarUrl || ''
+    };
+    return res;
+  }
+  // 兜底尝试 /login/status
+  try {
+    const statusRes = await request.get('/login/status');
+    const statusProfile = statusRes?.data?.data?.profile || statusRes?.data?.profile;
+    if (statusProfile) {
+      if (!res.data) res.data = {};
+      res.data.profile = statusProfile;
+      return res;
+    }
+  } catch (err) {
+    console.warn('获取 /login/status 兜底失败:', err);
+  }
+  return res;
 }
 
 // 退出登录

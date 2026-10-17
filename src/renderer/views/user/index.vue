@@ -453,8 +453,14 @@ const showFollowList = () => {
 //   router.push('/user/followers');
 // };
 
-const handleLoginSuccess = () => {
+const handleLoginSuccess = (userProfile?: any, loginType?: string) => {
   // 处理登录成功后的逻辑
+  if (userProfile && !userStore.user) {
+    userStore.setUser(userProfile);
+  }
+  if (loginType && !userStore.loginType) {
+    userStore.setLoginType(loginType as any);
+  }
   checkLoginStatus();
   loadData();
 };

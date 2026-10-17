@@ -185,8 +185,49 @@ export const ncmRequest = async (uri: string, data: any = {}, options: any = {})
     parsedBody = response.data;
   }
 
+  // 提取响应 Cookie
+  const cookieList: string[] = [];
+  if (Array.isArray(response.cookies) && response.cookies.length > 0) {
+    for (const c of response.cookies) {
+      if (typeof c === 'string' && c.trim() && !cookieList.includes(c.trim())) {
+        cookieList.push(c.trim());
+      }
+    }
+  }
+
+  if (response.headers && response.headers['set-cookie']) {
+    const rawSetCookie = response.headers['set-cookie'];
+    if (typeof rawSetCookie === 'string') {
+      rawSetCookie.split(/;\s*(?=[A-Za-z0-9_%-]+=[^;]+)/).forEach((item) => {
+        const part = item.split(';')[0].trim();
+        if (
+          part &&
+          part.includes('=') &&
+          !part.toLowerCase().startsWith('path=') &&
+          !part.toLowerCase().startsWith('domain=') &&
+          !part.toLowerCase().startsWith('expires=') &&
+          !part.toLowerCase().startsWith('max-age=') &&
+          !part.toLowerCase().startsWith('samesite=') &&
+          !cookieList.includes(part)
+        ) {
+          cookieList.push(part);
+        }
+      });
+    }
+  }
+
+  if (parsedBody && typeof parsedBody.cookie === 'string' && parsedBody.cookie.trim()) {
+    parsedBody.cookie.split(';').forEach((p: string) => {
+      const part = p.trim();
+      if (part && part.includes('=') && !cookieList.includes(part)) {
+        cookieList.push(part);
+      }
+    });
+  }
+
   return {
     status: response.status || 200,
-    body: parsedBody
+    body: parsedBody,
+    cookie: cookieList
   };
 };

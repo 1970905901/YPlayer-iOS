@@ -180,26 +180,58 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
             let errorMsg = error?.localizedDescription
 
             var responseHeaders: [String: String] = [:]
-            if let allHeaders = httpResponse?.allHeaderFields {
-                for (k, v) in allHeaders {
-                    responseHeaders[String(describing: k).lowercased()] = String(describing: v)
+            var cookieStrings: [String] = []
+
+            if let httpResponse = httpResponse {
+                let targetUrl = httpResponse.url ?? url
+                var headerFields: [String: String] = [:]
+                for (k, v) in httpResponse.allHeaderFields {
+                    let keyStr = String(describing: k)
+                    let valStr = String(describing: v)
+                    headerFields[keyStr] = valStr
+                    responseHeaders[keyStr.lowercased()] = valStr
                 }
+
+                let parsedCookies = HTTPCookie.cookies(withResponseHeaderFields: headerFields, for: targetUrl)
+                for c in parsedCookies {
+                    let cookieStr = "\(c.name)=\(c.value)"
+                    if !cookieStrings.contains(cookieStr) {
+                        cookieStrings.append(cookieStr)
+                    }
+                }
+
+                if let storageCookies = HTTPCookieStorage.shared.cookies(for: targetUrl) {
+                    for c in storageCookies {
+                        let cookieStr = "\(c.name)=\(c.value)"
+                        if !cookieStrings.contains(cookieStr) {
+                            cookieStrings.append(cookieStr)
+                        }
+                    }
+                }
+            }
+
+            if !cookieStrings.isEmpty {
+                responseHeaders["set-cookie"] = cookieStrings.joined(separator: "; ")
             }
 
             var responsePayload: [String: Any] = [
                 "id": reqId,
                 "status": statusCode,
                 "data": bodyString,
-                "headers": responseHeaders
+                "headers": responseHeaders,
+                "cookies": cookieStrings
             ]
             if let errorMsg = errorMsg {
                 responsePayload["error"] = errorMsg
             }
 
             guard let jsonData = try? JSONSerialization.data(withJSONObject: responsePayload),
-                  let jsonString = String(data: jsonData, encoding: .utf8) else {
+                  var jsonString = String(data: jsonData, encoding: .utf8) else {
                 return
             }
+
+            jsonString = jsonString.replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+            jsonString = jsonString.replacingOccurrences(of: "\u{2029}", with: "\\u2029")
 
             DispatchQueue.main.async {
                 self?.viewController?.evaluateJavaScript(

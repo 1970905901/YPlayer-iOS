@@ -109,6 +109,21 @@ modulesMap['/login/qr/check'] = `(query, request) => {
   }));
 }`;
 
+modulesMap['/user/account'] = `(query, request) => {
+  const data = {};
+  return request(\`/api/nuser/account/get\`, data, createOption(query, 'weapi')).then(async (result) => {
+    if (result.body && !result.body.profile && !result.body.account) {
+      try {
+        const fallback = await request(\`/api/w/nuser/account/get\`, data, createOption(query, 'weapi'));
+        if (fallback.body && (fallback.body.profile || fallback.body.account)) {
+          return fallback;
+        }
+      } catch {}
+    }
+    return result;
+  });
+}`;
+
 console.log(`Successfully parsed ${supportedCount} of ${files.length} modules.`);
 
 const outputHeader = `/* eslint-disable */

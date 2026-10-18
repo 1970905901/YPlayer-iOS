@@ -24,14 +24,16 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         UIApplication.shared.beginReceivingRemoteControlEvents()
-        NativeAudioManager.shared.refreshStateForForeground()
+        AudioSessionManager.shared.reactivateAudioSession()
+        NowPlayingManager.shared.reassertNowPlayingInfo()
     }
 
     func sceneWillResignActive(_ scene: UIScene) {}
 
     func sceneWillEnterForeground(_ scene: UIScene) {
         UIApplication.shared.beginReceivingRemoteControlEvents()
-        NativeAudioManager.shared.refreshStateForForeground()
+        AudioSessionManager.shared.reactivateAudioSession()
+        NowPlayingManager.shared.reassertNowPlayingInfo()
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {}

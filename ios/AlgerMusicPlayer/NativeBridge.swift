@@ -50,71 +50,41 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         case "setNativeCacheLimit":
             handleSetNativeCacheLimit(payload: body)
 
-        case "copyToClipboard":
-            handleCopyToClipboard(payload: body)
-
-        case "copyPlaybackDiagnostics":
-            handleCopyPlaybackDiagnostics(payload: body)
-
         case "preloadArtwork":
             handlePreloadArtwork(payload: body)
-
-        case "nativeAudioLoad":
-            NativeAudioManager.shared.load(body)
-
-        case "nativeAudioPlay":
-            NativeAudioManager.shared.play()
-
-        case "nativeAudioPause":
-            NativeAudioManager.shared.pause()
-
-        case "nativeAudioStop":
-            NativeAudioManager.shared.stop()
-
-        case "nativeAudioSeek":
-            NativeAudioManager.shared.seek(to: body["time"] as? Double ?? 0)
-
-        case "nativeAudioSetRate":
-            NativeAudioManager.shared.setRate(body["rate"] as? Double ?? 1)
-
-        case "nativeAudioSetVolume":
-            NativeAudioManager.shared.setVolume(body["volume"] as? Double ?? 1)
-
-        case "nativeAudioUpdateMetadata":
-            NativeAudioManager.shared.updateMetadata(body)
-
-        case "nativeAudioUpdateLyric":
-            NativeAudioManager.shared.updateLyric(body["text"] as? String ?? "")
 
         default:
             print("[NativeBridge] 未知操作类型: \(action)")
         }
     }
 
-    private func handleCopyToClipboard(payload: [String: Any]) {
-        guard let text = payload["text"] as? String, !text.isEmpty else { return }
-        DispatchQueue.main.async {
-            UIPasteboard.general.string = text
-        }
-    }
-
-    private func handleCopyPlaybackDiagnostics(payload: [String: Any]) {
-        let jsText = payload["text"] as? String ?? ""
-        let combined = jsText + "\n\n--- NativeAudioManager ---\n" + NativeAudioManager.shared.diagnosticsText()
-        DispatchQueue.main.async {
-            UIPasteboard.general.string = combined
-        }
-    }
-
     private func handlePreloadArtwork(payload: [String: Any]) {
         guard let artworkUrl = payload["artworkUrl"] as? String, !artworkUrl.isEmpty else { return }
-        NativeAudioManager.shared.prefetchArtwork(from: artworkUrl)
+        NowPlayingManager.shared.preloadArtwork(from: artworkUrl)
     }
 
     private func handleUpdatePlayState(payload: [String: Any]) {
-        // Legacy bridge action: forward metadata to the native player without
-        // initializing the old WKWebView-oriented Now Playing manager.
-        NativeAudioManager.shared.updateMetadata(payload)
+        let isPlaying = payload["isPlaying"] as? Bool ?? false
+        let title = payload["title"] as? String ?? ""
+        let artist = payload["artist"] as? String ?? ""
+        let album = payload["album"] as? String ?? ""
+        let artworkUrl = payload["artworkUrl"] as? String ?? ""
+        let duration = payload["duration"] as? Double ?? 0.0
+        let currentTime = payload["currentTime"] as? Double ?? 0.0
+        let playbackRate = payload["playbackRate"] as? Double ?? 1.0
+
+        let info = PlaybackStateInfo(
+            isPlaying: isPlaying,
+            title: title,
+            artist: artist,
+            album: album,
+            artworkUrl: artworkUrl,
+            duration: duration,
+            currentTime: currentTime,
+            playbackRate: playbackRate
+        )
+
+        NowPlayingManager.shared.updateNowPlaying(info: info)
     }
 
     private func handleHapticFeedback(payload: [String: Any]) {
@@ -294,15 +264,13 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         guard let text = payload["text"] as? String else { return }
         let currentTime = payload["currentTime"] as? Double
         let duration = payload["duration"] as? Double
-        _ = currentTime
-        _ = duration
-        NativeAudioManager.shared.updateLyric(text)
+        NowPlayingManager.shared.updateLyric(text: text, currentTime: currentTime, duration: duration)
     }
 
     private func handleClearNativeCache() {
         DispatchQueue.main.async {
             URLCache.shared.removeAllCachedResponses()
-            NativeAudioManager.shared.clearArtworkCache()
+            NowPlayingManager.shared.clearArtworkCache()
         }
     }
 
@@ -313,7 +281,7 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
                 URLCache.shared.removeAllCachedResponses()
                 URLCache.shared.memoryCapacity = 0
                 URLCache.shared.diskCapacity = 0
-                NativeAudioManager.shared.clearArtworkCache()
+                NowPlayingManager.shared.clearArtworkCache()
             } else {
                 URLCache.shared.memoryCapacity = min(limitMB, 64) * 1024 * 1024
                 URLCache.shared.diskCapacity = limitMB * 1024 * 1024

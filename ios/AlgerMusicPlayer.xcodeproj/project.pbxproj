@@ -14,7 +14,6 @@
 		1A2B3C4DB000000100000005 /* NowPlayingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4DF000000100000005 /* NowPlayingManager.swift */; };
 		1A2B3C4DB000000100000006 /* LocalSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4DF000000100000006 /* LocalSchemeHandler.swift */; };
 		1A2B3C4DB000000100000007 /* NativeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4DF000000100000007 /* NativeBridge.swift */; };
-		1A2B3C4DB000000100000008 /* NativeAudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4DF00000010000000D /* NativeAudioManager.swift */; };
 		1A2B3C4DB000000200000001 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4DF000000100000009 /* LaunchScreen.storyboard */; };
 		1A2B3C4DB000000200000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4DF00000010000000A /* Assets.xcassets */; };
 		1A2B3C4DB000000200000003 /* AppAssets in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4DF00000010000000B /* AppAssets */; };
@@ -32,7 +31,6 @@
 		1A2B3C4DF000000100000005 /* NowPlayingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingManager.swift; sourceTree = "<group>"; };
 		1A2B3C4DF000000100000006 /* LocalSchemeHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSchemeHandler.swift; sourceTree = "<group>"; };
 		1A2B3C4DF000000100000007 /* NativeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeBridge.swift; sourceTree = "<group>"; };
-		1A2B3C4DF00000010000000D /* NativeAudioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAudioManager.swift; sourceTree = "<group>"; };
 		1A2B3C4DF000000100000008 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		1A2B3C4DF000000100000009 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		1A2B3C4DF00000010000000A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -78,7 +76,6 @@
 				1A2B3C4DF000000100000005 /* NowPlayingManager.swift */,
 				1A2B3C4DF000000100000006 /* LocalSchemeHandler.swift */,
 				1A2B3C4DF000000100000007 /* NativeBridge.swift */,
-				1A2B3C4DF00000010000000D /* NativeAudioManager.swift */,
 				1A2B3C4DF000000100000009 /* LaunchScreen.storyboard */,
 				1A2B3C4DF00000010000000A /* Assets.xcassets */,
 				1A2B3C4DF00000010000000B /* AppAssets */,
@@ -184,7 +181,6 @@
 				1A2B3C4DB000000100000005 /* NowPlayingManager.swift in Sources */,
 				1A2B3C4DB000000100000006 /* LocalSchemeHandler.swift in Sources */,
 				1A2B3C4DB000000100000007 /* NativeBridge.swift in Sources */,
-				1A2B3C4DB000000100000008 /* NativeAudioManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -309,7 +305,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_BITCODE = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AlgerMusicPlayer/Info.plist;
@@ -318,7 +314,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 5.2.1;
+				MARKETING_VERSION = 5.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = fun.alger.music;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -333,7 +329,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_BITCODE = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AlgerMusicPlayer/Info.plist;
@@ -342,7 +338,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 5.2.1;
+				MARKETING_VERSION = 5.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = fun.alger.music;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

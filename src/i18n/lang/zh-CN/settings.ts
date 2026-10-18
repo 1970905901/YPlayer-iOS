@@ -281,10 +281,6 @@ export default {
     authorDesc: 'algerkong 点个star🌟呗',
     telegram: 'Telegram 交流群',
     gotoTelegram: '前往 Telegram',
-    playbackDiagnostics: '播放诊断',
-    diagnosticsDescription: '复制最近的播放、控制中心和打断事件，便于排查问题',
-    copyDiagnostics: '复制诊断日志',
-    diagnosticsCopied: '诊断日志已复制',
     messages: {
       checkError: '检查更新失败，请稍后重试'
     }

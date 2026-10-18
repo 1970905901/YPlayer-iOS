@@ -10,8 +10,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        // 原生 AVPlayer 负责音频、后台恢复与 Now Playing
-        NativeAudioManager.shared.start()
+        // 配置音频会话以支持后台播放
+        AudioSessionManager.shared.configureAudioSession()
 
         // 注册远程控制事件（耳机按钮、锁屏控制、AirPods 触控等）
         application.beginReceivingRemoteControlEvents()
@@ -21,7 +21,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         application.beginReceivingRemoteControlEvents()
-        NativeAudioManager.shared.refreshStateForForeground()
+        AudioSessionManager.shared.reactivateAudioSession()
+        NowPlayingManager.shared.reassertNowPlayingInfo()
     }
 
     // MARK: - UISceneSession Lifecycle

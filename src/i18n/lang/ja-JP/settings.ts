@@ -285,11 +285,6 @@ export default {
     authorDesc: 'algerkong スターを付けてください🌟',
     telegram: 'Telegram グループ',
     gotoTelegram: 'Telegram を開く',
-    playbackDiagnostics: '再生診断',
-    diagnosticsDescription:
-      '最近の再生、コントロールセンター、中断イベントをコピーして調査に使用します',
-    copyDiagnostics: '診断ログをコピー',
-    diagnosticsCopied: '診断ログをコピーしました',
     messages: {
       checkError: '更新確認に失敗しました。後でもう一度お試しください'
     }

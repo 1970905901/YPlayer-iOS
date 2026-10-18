@@ -115,14 +115,11 @@ export const preloadCoverImage = (
   if (!picUrl) return;
 
   try {
-    // UI 与原生 Now Playing 统一预加载 500px，优先保证可见封面与加载成功率。
     const imageUrl = getImgUrl(picUrl, '500y500');
     console.log('预加载封面图片:', imageUrl);
 
-    // iOS 已改由 NativeAudioManager 管理 Now Playing；不再触碰旧的原生 Now Playing 管理器。
-    if (!nativeBridge.isIOS) {
-      nativeBridge.preloadArtwork(imageUrl);
-    }
+    // 同步触发 iOS 原生预下载与缓存
+    nativeBridge.preloadArtwork(imageUrl);
 
     // 创建一个 Image 对象来预加载图片
     const img = new Image();

@@ -3,8 +3,6 @@ import { computed, type ComputedRef, nextTick, onUnmounted, ref, watch } from 'v
 
 import useIndexedDB from '@/hooks/IndexDBHook';
 import { audioService } from '@/services/audioService';
-import { nativeBridge } from '@/services/nativeBridge';
-import { playbackDiagnostics } from '@/services/playbackDiagnostics';
 import type { usePlayerStore } from '@/store';
 import type { Artist, ILyricText, SongResult } from '@/types/music';
 import { isElectron } from '@/utils';
@@ -31,86 +29,6 @@ export const initMusicHook = (store: ReturnType<typeof usePlayerStore>) => {
   setupMusicWatchers();
   setupCorrectionTimeWatcher();
   setupPlayStateWatcher();
-
-  // 预注册原生远程命令，避免 App 在游戏/后台时动态 import 模块失败或延迟。
-  nativeBridge.setRemoteCommandHandler(async (command, arg) => {
-    const store = getPlayerStore();
-
-    switch (command) {
-      case 'play':
-        if (audioService.getCurrentSound()?.src) {
-          if (await audioService.resume()) {
-            store.setIsPlay(true);
-            store.userPlayIntent = true;
-          } else {
-            store.setIsPlay(false);
-            store.userPlayIntent = false;
-          }
-        } else if (store.playMusic?.id) {
-          const { playTrack } = await import('@/services/playbackController');
-          await playTrack(store.playMusic, true);
-        }
-        break;
-      case 'pause':
-        audioService.pause();
-        store.setIsPlay(false);
-        store.userPlayIntent = false;
-        break;
-      case 'interruptionPause':
-        // 系统打断只停止当前音频，不清除“用户原本要播放”的意图。
-        playbackDiagnostics.log('command-interruption-pause');
-        audioService.pauseForInterruption();
-        store.setIsPlay(false);
-        break;
-      case 'interruptionResume':
-        // 重建 WebKit 媒体元素，确保 Now Playing 卡片和远程控制重新注册。
-        playbackDiagnostics.log('command-interruption-resume', {
-          hasSrc: !!audioService.getCurrentSound()?.src,
-          hasTrack: !!store.playMusic?.id
-        });
-        if (audioService.getCurrentSound()?.src) {
-          const recovered = await audioService.resumeAfterInterruption();
-          playbackDiagnostics.log('command-interruption-resume-result', { recovered });
-          store.setIsPlay(recovered);
-          if (recovered) store.userPlayIntent = true;
-        } else if (store.playMusic?.id) {
-          const { playTrack } = await import('@/services/playbackController');
-          await playTrack(store.playMusic, true);
-        }
-        break;
-      case 'togglePlayPause':
-        if (audioService.isPlaying()) {
-          audioService.pause();
-          store.setIsPlay(false);
-          store.userPlayIntent = false;
-        } else if (audioService.getCurrentSound()?.src) {
-          if (await audioService.resume()) {
-            store.setIsPlay(true);
-            store.userPlayIntent = true;
-          } else {
-            store.setIsPlay(false);
-            store.userPlayIntent = false;
-          }
-        } else if (store.playMusic?.id) {
-          const { playTrack } = await import('@/services/playbackController');
-          await playTrack(store.playMusic, true);
-        }
-        break;
-      case 'nextTrack':
-        await store.nextPlay();
-        break;
-      case 'previousTrack':
-        await store.prevPlay();
-        break;
-      case 'changePlaybackPosition':
-        if (typeof arg === 'number') {
-          audioService.seek(arg);
-        }
-        break;
-      default:
-        console.warn('[MusicHook] Unknown native remote command:', command);
-    }
-  });
 };
 
 // 获取 playerStore 的辅助函数
@@ -534,8 +452,6 @@ const setupAudioListeners = () => {
           updateCurrentTimeAndDuration();
           const curTime = sound.value?.currentTime ?? nowTime.value;
           nowIndex.value = getLrcIndex(curTime);
-          // WebKit 可能在后台清空 Media Session，回前台时重新建立 Control Center 卡片。
-          audioService.refreshMediaSession();
         }
         startProgressInterval();
       }

@@ -1,8 +1,7 @@
 import Foundation
 import AVFoundation
 
-/// 管理应用音频会话及系统音频中断/路由变化事件。
-/// 使用混音类别避免游戏/短视频音频抢占独占会话；真实打断结束后按用户播放意图恢复。
+/// 管理应用音频会话及系统音频中断/插拔事件
 final class AudioSessionManager {
     static let shared = AudioSessionManager()
 
@@ -11,17 +10,13 @@ final class AudioSessionManager {
     private var silenceSecondaryObserver: NSObjectProtocol?
     private var mediaServicesResetObserver: NSObjectProtocol?
     private var recoveryWorkItems = [DispatchWorkItem]()
-    private var isInterruptionActive = false
-    private var interruptionBeganAt: Date?
-    // setCategory 在 WKWebView 正在播放时可能打断 WebKit 音频并撤销 Now Playing，只能配置一次。
-    private var isCategoryConfigured = false
 
     private init() {
         setupObservers()
     }
 
     deinit {
-        cancelPausedItemRecovery()
+        cancelRecoveryWorkItems()
         if let observer = interruptionObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -36,69 +31,24 @@ final class AudioSessionManager {
         }
     }
 
-    /// 配置播放类别，但不在启动阶段激活，避免应用一打开就打断其他 App 的音频。
-    @discardableResult
-    func configureAudioSession() -> Bool {
-        applyAudioSession(activate: false)
-    }
-
-    /// 在用户明确开始播放或从控制中心点击播放时激活音频会话。
-    @discardableResult
-    func reactivateAudioSession() -> Bool {
-        applyAudioSession(activate: true)
-    }
-
-    /// 取消打断后的暂停卡片恢复，避免用户已经重新播放仍继续恢复。
-    func cancelPausedItemRecovery() {
+    /// 取消挂起的自愈检测
+    private func cancelRecoveryWorkItems() {
         recoveryWorkItems.forEach { $0.cancel() }
         recoveryWorkItems.removeAll()
     }
 
-    /// 打断会临时撤销音频会话资格；在限定时间内按用户播放意图恢复真实播放，
-    /// 无法恢复时再重申暂停中的 Now Playing 卡片。
-    func schedulePausedItemRecovery() {
-        cancelPausedItemRecovery()
-        guard NowPlayingManager.shared.hasActiveNowPlayingItem,
-              !NowPlayingManager.shared.isCurrentlyPlayingForAudioSession else {
-            return
-        }
-
-        // 首次恢复已由 .ended 立即派发；后续重试给 WKWebView 留出执行窗口，避免重叠命令互相取消。
-        let intervals = [2.0, 4.0, 8.0, 12.0, 18.0, 25.0, 35.0, 45.0, 60.0]
+    /// 当收到打断开始但可能由于第三方应用未发 .ended 时，通过梯度延迟轮询自愈
+    func scheduleInterruptionRecovery() {
+        cancelRecoveryWorkItems()
+        let intervals = [0.8, 1.8, 3.2, 5.0, 8.0, 12.0, 18.0, 25.0]
         for delay in intervals {
             let item = DispatchWorkItem { [weak self] in
                 guard let self = self else { return }
-                guard NowPlayingManager.shared.hasActiveNowPlayingItem,
-                      !NowPlayingManager.shared.isCurrentlyPlayingForAudioSession else {
-                    self.cancelPausedItemRecovery()
-                    return
-                }
-                // 某些第三方 App 会占用媒体焦点但不发送 .ended；8 秒后若音频占用已释放则主动恢复。
-                if self.isInterruptionActive {
-                    let elapsed = self.interruptionBeganAt.map { Date().timeIntervalSince($0) } ?? 0
-                    guard elapsed >= 8,
-                          !AVAudioSession.sharedInstance().isOtherAudioPlaying else { return }
-
-                    print("[AudioSessionManager] 未收到打断结束通知，音频占用已释放，主动恢复")
-                    self.isInterruptionActive = false
-                    self.interruptionBeganAt = nil
-                    NowPlayingManager.shared.handleInterruptionEnded(shouldResume: true)
-                    return
-                }
-
-                // 打断前正在播放时优先恢复真实播放，Control Center 才能重新持有 Now Playing 资格。
-                // 混音会话允许在游戏仍在发声时恢复，不因 isOtherAudioPlaying 一直卡住。
-                if NowPlayingManager.shared.resumeAfterInterruptionIfPossible() {
-                    // 保留后续重试；WebKit 确认真正播放后会自动取消恢复任务。
-                    return
-                }
-
-                // 仅暂停卡片需要避开其他 App 的独占会话；没有其他音频时重新激活并重申元数据。
-                guard !AVAudioSession.sharedInstance().isOtherAudioPlaying else { return }
-                guard self.reactivateAudioSession() else { return }
-                self.cancelPausedItemRecovery()
-                NowPlayingManager.shared.reassertNowPlayingInfo()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                // 若其他应用已停止播放，尝试重新激活音频会话并刷新控制中心
+                if !AVAudioSession.sharedInstance().isOtherAudioPlaying {
+                    print("[AudioSessionManager] 轮询检测到其他应用已停止播放，自动恢复音频会话并同步控制中心")
+                    self.cancelRecoveryWorkItems()
+                    self.reactivateAudioSession()
                     NowPlayingManager.shared.reassertNowPlayingInfo()
                 }
             }
@@ -107,50 +57,42 @@ final class AudioSessionManager {
         }
     }
 
-    private func applyAudioSession(activate: Bool) -> Bool {
-        let session = AVAudioSession.sharedInstance()
+    /// 配置 AVAudioSession 支持后台持续播放
+    func configureAudioSession() {
         do {
-            try configureCategoryIfNeeded(session)
-
-            if activate {
-                // 正常播放时绝不重设分类；仅当系统/WebKit 已把分类改掉时才在播放前恢复。
-                if session.category != .playback {
-                    isCategoryConfigured = false
-                    try configureCategoryIfNeeded(session)
-                }
-                do {
-                    try session.setActive(true)
-                } catch {
-                    // 系统/WebKit 可能重置过分类；只在激活失败时重新配置，避免打断正在播放的 WebKit 音频。
-                    isCategoryConfigured = false
-                    try configureCategoryIfNeeded(session)
-                    try session.setActive(true)
-                }
-                print("[AudioSessionManager] 音频会话已激活")
-            } else {
-                print("[AudioSessionManager] 音频会话类别已配置（待播放时激活）")
-            }
-            return true
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(
+                .playback,
+                mode: .default,
+                options: [.allowAirPlay, .allowBluetooth]
+            )
+            try session.setActive(true)
+            print("[AudioSessionManager] 音频会话配置成功并激活")
         } catch {
-            isCategoryConfigured = false
             print("[AudioSessionManager] 配置音频会话失败: \(error.localizedDescription)")
-            return false
         }
     }
 
-    private func configureCategoryIfNeeded(_ session: AVAudioSession) throws {
-        guard !isCategoryConfigured else { return }
-        try session.setCategory(
-            .playback,
-            mode: .default,
-            // 游戏、短视频等音频不应把本 App 的独占会话打断；音乐可与其混音。
-            options: [.mixWithOthers, .allowAirPlay, .allowBluetoothA2DP]
-        )
-        isCategoryConfigured = true
+    /// 重新激活音频会话（系统打断结束或重新恢复播放时调用，确保控制中心资格不丢失）
+    func reactivateAudioSession() {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(
+                .playback,
+                mode: .default,
+                options: [.allowAirPlay, .allowBluetooth]
+            )
+            try session.setActive(true)
+            print("[AudioSessionManager] 音频会话重新激活成功")
+        } catch {
+            print("[AudioSessionManager] 重新激活音频会话失败: \(error.localizedDescription)")
+        }
     }
 
-    /// 监听耳机拔出、系统打断、主导音频切换及音频服务重置。
+    /// 监听耳机拔出、系统打断、主导音频切换及音频服务重置
     private func setupObservers() {
+        // 1. 监听系统音频中断通知 (来电、Siri、其他应用播放音视频抢占音频焦点)
+        // 必须使用 object: nil，以便捕获来自 WebKit 及系统级的全局音频打断事件
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: nil,
@@ -159,6 +101,7 @@ final class AudioSessionManager {
             self?.handleInterruption(notification: notification)
         }
 
+        // 2. 耳机拔出 / 蓝牙断开自动暂停，避免外放尴尬并同步控制中心
         routeChangeObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.routeChangeNotification,
             object: nil,
@@ -167,6 +110,7 @@ final class AudioSessionManager {
             self?.handleRouteChange(notification: notification)
         }
 
+        // 3. 监听其他主导音频开始/结束播放提示 (如短视频应用或游戏播放声音)
         silenceSecondaryObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.silenceSecondaryAudioHintNotification,
             object: nil,
@@ -175,18 +119,15 @@ final class AudioSessionManager {
             self?.handleSilenceSecondaryAudioHint(notification: notification)
         }
 
+        // 4. 监听系统音频服务重置 (mediaserverd 进程崩溃或重启)
         mediaServicesResetObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.mediaServicesWereResetNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            print("[AudioSessionManager] 系统音频服务重置，重新配置音频会话")
-            self?.isInterruptionActive = false
-            self?.interruptionBeganAt = nil
-            self?.isCategoryConfigured = false
+            print("[AudioSessionManager] 系统音频服务重置，重新初始化")
             self?.configureAudioSession()
             NowPlayingManager.shared.reassertNowPlayingInfo()
-            self?.schedulePausedItemRecovery()
         }
     }
 
@@ -199,23 +140,20 @@ final class AudioSessionManager {
 
         switch type {
         case .began:
-            print("[AudioSessionManager] 收到音频打断开始，保持控制中心暂停状态")
-            isInterruptionActive = true
-            interruptionBeganAt = Date()
+            print("[AudioSessionManager] 收到音频打断开始 (interruption began)，保持控制中心显示暂停状态")
             NowPlayingManager.shared.handleInterruptionBegan()
-            schedulePausedItemRecovery()
+            scheduleInterruptionRecovery()
 
         case .ended:
-            isInterruptionActive = false
-            interruptionBeganAt = nil
+            cancelRecoveryWorkItems()
             let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
             let shouldResume = options.contains(.shouldResume)
-            print("[AudioSessionManager] 收到音频打断结束，shouldResume: \(shouldResume)")
+            print("[AudioSessionManager] 收到音频打断结束 (interruption ended), shouldResume: \(shouldResume)")
 
-            // 由 NowPlayingManager 按用户播放意图决定是否恢复；随后统一进入重试/暂停卡片恢复。
+            // 打断结束后重新激活音频会话，确保控制中心不会因为会话失活而消失
+            reactivateAudioSession()
             NowPlayingManager.shared.handleInterruptionEnded(shouldResume: shouldResume)
-            schedulePausedItemRecovery()
 
         @unknown default:
             break
@@ -231,9 +169,8 @@ final class AudioSessionManager {
 
         switch reason {
         case .oldDeviceUnavailable:
-            print("[AudioSessionManager] 旧音频设备断开（耳机拔出/蓝牙断开），自动暂停")
-            NowPlayingManager.shared.handleInterruptionBegan(allowAutoResume: false)
-            schedulePausedItemRecovery()
+            print("[AudioSessionManager] 旧音频设备断开连接 (耳机拔出/蓝牙断开)，自动切换为暂停状态")
+            NowPlayingManager.shared.handleInterruptionBegan()
         default:
             break
         }
@@ -248,10 +185,14 @@ final class AudioSessionManager {
 
         switch hintType {
         case .begin:
-            // 次级音频提示是系统混音建议，不是硬打断。游戏/短视频开始发声时不应强制暂停音乐。
-            print("[AudioSessionManager] 次级音频提示开始，保持当前播放")
+            print("[AudioSessionManager] 收到主导音频抢占提示，保持控制中心显示暂停状态")
+            NowPlayingManager.shared.handleInterruptionBegan()
+            scheduleInterruptionRecovery()
         case .end:
-            print("[AudioSessionManager] 次级音频提示结束")
+            cancelRecoveryWorkItems()
+            print("[AudioSessionManager] 主导音频播放完毕，重新激活音频会话并保持控制中心信息")
+            reactivateAudioSession()
+            NowPlayingManager.shared.handleInterruptionEnded(shouldResume: false)
         @unknown default:
             break
         }

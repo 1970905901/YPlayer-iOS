@@ -6,10 +6,6 @@
 
 export interface PlaybackStatePayload {
   isPlaying: boolean;
-  /** 用户是否希望播放；系统打断导致的 pause 不会清除该意图。 */
-  userPlayIntent?: boolean;
-  /** WKWebView 是否提供 Media Session；原生据此避免与 WebKit 双写 Now Playing。 */
-  mediaSessionAvailable?: boolean;
   title: string;
   artist: string;
   album?: string;
@@ -22,12 +18,7 @@ export interface PlaybackStatePayload {
 export type HapticStyle =
   'light' | 'medium' | 'heavy' | 'selection' | 'success' | 'warning' | 'error';
 
-type RemoteCommandHandler = (command: string, arg?: any) => void | Promise<void>;
-
 class NativeBridge {
-  private remoteCommandHandler: RemoteCommandHandler | null = null;
-  private nativeAudioEventHandler: ((event: string, payload?: any) => void) | null = null;
-
   /**
    * 判断是否运行在 iOS 原生 WKWebView 容器中
    */
@@ -48,19 +39,10 @@ class NativeBridge {
     if (typeof window === 'undefined') return;
 
     (window as any).__NATIVE_BRIDGE__ = {
-      // 返回 Promise，让原生 callAsyncJavaScript 能等待命令真正执行完成。
-      handleRemoteCommand: (command: string, arg?: any) => this.dispatchRemoteCommand(command, arg)
+      handleRemoteCommand: (command: string, arg?: any) => {
+        this.dispatchRemoteCommand(command, arg);
+      }
     };
-    (window as any).__NATIVE_AUDIO_EVENT__ = (event: string, payload?: any) => {
-      this.nativeAudioEventHandler?.(event, payload);
-    };
-  }
-
-  /**
-   * 预注册远程命令处理器，避免后台切歌时依赖动态 import 和模块唤醒。
-   */
-  public setRemoteCommandHandler(handler: RemoteCommandHandler) {
-    this.remoteCommandHandler = handler;
   }
 
   /**
@@ -85,15 +67,13 @@ class NativeBridge {
     if (!this.isIOS) return;
     this.postMessage('updatePlayState', {
       isPlaying: state.isPlaying,
-      userPlayIntent: state.userPlayIntent ?? state.isPlaying,
-      mediaSessionAvailable: state.mediaSessionAvailable ?? false,
       title: state.title || '未知曲目',
       artist: state.artist || '未知艺术家',
       album: state.album || '',
       artworkUrl: state.artworkUrl || '',
       duration: Math.max(0, state.duration || 0),
       currentTime: Math.max(0, state.currentTime || 0),
-      playbackRate: state.playbackRate ?? 1.0
+      playbackRate: state.playbackRate || 1.0
     });
   }
 
@@ -103,74 +83,6 @@ class NativeBridge {
   public preloadArtwork(url: string) {
     if (!this.isIOS || !url) return;
     this.postMessage('preloadArtwork', { artworkUrl: url });
-  }
-
-  public setNativeAudioEventHandler(handler: (event: string, payload?: any) => void) {
-    this.nativeAudioEventHandler = handler;
-  }
-
-  public nativeAudioLoad(payload: Record<string, any>) {
-    if (!this.isIOS) return;
-    this.postMessage('nativeAudioLoad', payload);
-  }
-
-  public nativeAudioPlay() {
-    if (!this.isIOS) return;
-    this.postMessage('nativeAudioPlay');
-  }
-
-  public nativeAudioPause() {
-    if (!this.isIOS) return;
-    this.postMessage('nativeAudioPause');
-  }
-
-  public nativeAudioSeek(time: number) {
-    if (!this.isIOS) return;
-    this.postMessage('nativeAudioSeek', { time });
-  }
-
-  public nativeAudioSetRate(rate: number) {
-    if (!this.isIOS) return;
-    this.postMessage('nativeAudioSetRate', { rate });
-  }
-
-  public nativeAudioSetVolume(volume: number) {
-    if (!this.isIOS) return;
-    this.postMessage('nativeAudioSetVolume', { volume });
-  }
-
-  public nativeAudioStop() {
-    if (!this.isIOS) return;
-    this.postMessage('nativeAudioStop');
-  }
-
-  public nativeAudioUpdateMetadata(metadata: Record<string, any>) {
-    if (!this.isIOS) return;
-    this.postMessage('nativeAudioUpdateMetadata', metadata);
-  }
-
-  public nativeAudioUpdateLyric(text: string) {
-    if (!this.isIOS) return;
-    this.postMessage('nativeAudioUpdateLyric', { text });
-  }
-
-  /** 复制前端与原生播放诊断，iOS 直接写入 UIPasteboard。 */
-  public copyPlaybackDiagnostics(text: string) {
-    if (!this.isIOS) {
-      void navigator.clipboard?.writeText(text);
-      return;
-    }
-    this.postMessage('copyPlaybackDiagnostics', { text });
-  }
-
-  /** 复制诊断文本；iOS 使用原生 UIPasteboard，避免 WKWebView 权限差异。 */
-  public copyToClipboard(text: string) {
-    if (!text) return;
-    if (!this.isIOS) {
-      void navigator.clipboard?.writeText(text);
-      return;
-    }
-    this.postMessage('copyToClipboard', { text });
   }
 
   /**
@@ -226,11 +138,6 @@ class NativeBridge {
    */
   private async dispatchRemoteCommand(command: string, arg?: any) {
     try {
-      if (this.remoteCommandHandler) {
-        await this.remoteCommandHandler(command, arg);
-        return;
-      }
-
       const { usePlayerStore } = await import('@/store/modules/player');
       const { usePlaylistStore } = await import('@/store/modules/playlist');
       const { audioService } = await import('@/services/audioService');
@@ -240,13 +147,9 @@ class NativeBridge {
       switch (command) {
         case 'play':
           if (audioService.getCurrentSound()?.src) {
-            if (await audioService.resume()) {
-              playerStore.setIsPlay(true);
-              playerStore.userPlayIntent = true;
-            } else {
-              playerStore.setIsPlay(false);
-              playerStore.userPlayIntent = false;
-            }
+            audioService.resume();
+            playerStore.setIsPlay(true);
+            playerStore.userPlayIntent = true;
           } else if (playerStore.playMusic?.id) {
             const { playTrack } = await import('@/services/playbackController');
             await playTrack(playerStore.playMusic, true);
@@ -257,35 +160,20 @@ class NativeBridge {
           playerStore.setIsPlay(false);
           playerStore.userPlayIntent = false;
           break;
-        case 'interruptionPause':
-          audioService.pauseForInterruption();
-          playerStore.setIsPlay(false);
-          break;
-        case 'interruptionResume':
-          if (audioService.getCurrentSound()?.src) {
-            playerStore.setIsPlay(await audioService.resumeAfterInterruption());
-          } else if (playerStore.playMusic?.id) {
-            const { playTrack } = await import('@/services/playbackController');
-            await playTrack(playerStore.playMusic, true);
-          }
-          break;
         case 'togglePlayPause':
-          // 以真实 audio 元素状态为准，避免控制中心与 playerStore 状态短暂不一致时反向切换。
-          if (audioService.isPlaying()) {
+          if (playerStore.play) {
             audioService.pause();
             playerStore.setIsPlay(false);
             playerStore.userPlayIntent = false;
-          } else if (audioService.getCurrentSound()?.src) {
-            if (await audioService.resume()) {
+          } else {
+            if (audioService.getCurrentSound()?.src) {
+              audioService.resume();
               playerStore.setIsPlay(true);
               playerStore.userPlayIntent = true;
-            } else {
-              playerStore.setIsPlay(false);
-              playerStore.userPlayIntent = false;
+            } else if (playerStore.playMusic?.id) {
+              const { playTrack } = await import('@/services/playbackController');
+              await playTrack(playerStore.playMusic, true);
             }
-          } else if (playerStore.playMusic?.id) {
-            const { playTrack } = await import('@/services/playbackController');
-            await playTrack(playerStore.playMusic, true);
           }
           break;
         case 'nextTrack':
@@ -304,7 +192,6 @@ class NativeBridge {
       }
     } catch (err) {
       console.error('[NativeBridge] Error handling remote command:', err);
-      throw err;
     }
   }
 }

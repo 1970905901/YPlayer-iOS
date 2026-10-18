@@ -6,9 +6,6 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     private var webView: WKWebView!
     private var nativeBridge: NativeBridge!
     private var currentStatusBarStyle: UIStatusBarStyle = .default
-    private var remoteCommandBackgroundTask: UIBackgroundTaskIdentifier = .invalid
-    private var remoteCommandTimeoutWorkItem: DispatchWorkItem?
-    private var remoteCommandGeneration = 0
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
         return currentStatusBarStyle
@@ -26,7 +23,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     override func viewDidLoad() {
         super.viewDidLoad()
         setupViews()
-        setupNativeAudioBridge()
+        setupRemoteCommandHandler()
         loadWebApp()
     }
 
@@ -89,85 +86,27 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         ])
     }
 
-    private func setupNativeAudioBridge() {
-        NativeAudioManager.shared.start()
-        NativeAudioManager.shared.onEvent = { [weak self] event, payload in
-            self?.sendNativeAudioEvent(event, payload)
-        }
-        NativeAudioManager.shared.onRemoteCommand = { [weak self] command in
-            self?.sendRemoteCommandToWeb(command: command, arg: nil)
+    private func setupRemoteCommandHandler() {
+        NowPlayingManager.shared.onCommandReceived = { [weak self] command, arg in
+            self?.sendRemoteCommandToWeb(command: command, arg: arg)
         }
     }
 
-    private func sendNativeAudioEvent(_ event: String, _ payload: [String: Any]) {
-        guard let webView = self.webView else { return }
-        webView.callAsyncJavaScript(
-            "return window.__NATIVE_AUDIO_EVENT__ ? window.__NATIVE_AUDIO_EVENT__(event, payload) : null;",
-            arguments: ["event": event, "payload": payload],
-            in: nil,
-            in: .page
-        ) { _ in }
-    }
-
-    private func sendRemoteCommandToWeb(command: String, arg: Double?, attempt: Int = 0) {
+    private func sendRemoteCommandToWeb(command: String, arg: Double?) {
         guard let webView = self.webView else { return }
 
-        endRemoteCommandBackgroundTask()
-        remoteCommandGeneration &+= 1
-        let generation = remoteCommandGeneration
-        let taskId = UIApplication.shared.beginBackgroundTask(withName: "RemoteCommand-\(command)") { [weak self] in
-            self?.endRemoteCommandBackgroundTask()
-        }
-        if taskId != .invalid {
-            remoteCommandBackgroundTask = taskId
+        let argString: String
+        if let val = arg {
+            argString = "\(val)"
+        } else {
+            argString = "null"
         }
 
-        var arguments: [String: Any] = ["command": command]
-        // 无参数命令传 0 即可；远程命令处理器只在 seek 时读取数值参数。
-        arguments["arg"] = arg ?? 0
-
-        let script = """
-        if (!window.__NATIVE_BRIDGE__ || typeof window.__NATIVE_BRIDGE__.handleRemoteCommand !== 'function') {
-            throw new Error('native-bridge-not-ready');
-        }
-        return await window.__NATIVE_BRIDGE__.handleRemoteCommand(command, arg);
-        """
-
-        webView.callAsyncJavaScript(script, arguments: arguments, in: nil, in: .page) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self, self.remoteCommandGeneration == generation else { return }
-                if case let .failure(error) = result {
-                    print("[ViewController] 远端指令派发至 Web 异常: \(error.localizedDescription)")
-                    if attempt < 1 {
-                        self.endRemoteCommandBackgroundTask()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            guard self.remoteCommandGeneration == generation else { return }
-                            self.sendRemoteCommandToWeb(command: command, arg: arg, attempt: attempt + 1)
-                        }
-                        return
-                    }
-                }
-                self.endRemoteCommandBackgroundTask()
+        let js = "window.__NATIVE_BRIDGE__ && window.__NATIVE_BRIDGE__.handleRemoteCommand('\(command)', \(argString));"
+        webView.evaluateJavaScript(js) { _, error in
+            if let error = error {
+                print("[ViewController] 远端指令派发至 Web 异常: \(error.localizedDescription)")
             }
-        }
-
-        remoteCommandTimeoutWorkItem?.cancel()
-        let timeout = DispatchWorkItem { [weak self] in
-            guard let self = self,
-                  self.remoteCommandGeneration == generation,
-                  self.remoteCommandBackgroundTask == taskId else { return }
-            self.endRemoteCommandBackgroundTask()
-        }
-        remoteCommandTimeoutWorkItem = timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + 25.0, execute: timeout)
-    }
-
-    private func endRemoteCommandBackgroundTask() {
-        remoteCommandTimeoutWorkItem?.cancel()
-        remoteCommandTimeoutWorkItem = nil
-        if remoteCommandBackgroundTask != .invalid {
-            UIApplication.shared.endBackgroundTask(remoteCommandBackgroundTask)
-            remoteCommandBackgroundTask = .invalid
         }
     }
 

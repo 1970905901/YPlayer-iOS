@@ -286,10 +286,6 @@ export default {
     authorDesc: 'algerkong 별점🌟 부탁드려요',
     telegram: 'Telegram 그룹',
     gotoTelegram: 'Telegram 열기',
-    playbackDiagnostics: '재생 진단',
-    diagnosticsDescription: '최근 재생, 제어 센터 및 중단 이벤트를 복사하여 문제를 확인합니다',
-    copyDiagnostics: '진단 로그 복사',
-    diagnosticsCopied: '진단 로그가 복사되었습니다',
     messages: {
       checkError: '업데이트 확인 실패, 나중에 다시 시도하세요'
     }

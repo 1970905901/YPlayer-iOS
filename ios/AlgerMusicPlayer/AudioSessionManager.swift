@@ -1,6 +1,5 @@
 import Foundation
 import AVFoundation
-import UIKit
 
 /// 管理应用音频会话及系统音频中断/插拔事件
 final class AudioSessionManager {
@@ -11,7 +10,6 @@ final class AudioSessionManager {
     private var silenceSecondaryObserver: NSObjectProtocol?
     private var mediaServicesResetObserver: NSObjectProtocol?
     private var recoveryWorkItems = [DispatchWorkItem]()
-    private var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
 
     private init() {
         setupObservers()
@@ -19,7 +17,6 @@ final class AudioSessionManager {
 
     deinit {
         cancelRecoveryWorkItems()
-        endBackgroundAssertion()
         if let observer = interruptionObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -34,35 +31,17 @@ final class AudioSessionManager {
         }
     }
 
-    /// 开启临时后台任务保护，保证打断发生后应用有充足时间完成控制中心元数据写入与自愈
-    func beginBackgroundAssertion() {
-        endBackgroundAssertion()
-        backgroundTaskId = UIApplication.shared.beginBackgroundTask(withName: "AudioInterruptionHandling") { [weak self] in
-            self?.endBackgroundAssertion()
-        }
-    }
-
-    /// 结束后台任务保护
-    func endBackgroundAssertion() {
-        if backgroundTaskId != .invalid {
-            let taskId = backgroundTaskId
-            backgroundTaskId = .invalid
-            UIApplication.shared.endBackgroundTask(taskId)
-        }
-    }
-
     /// 取消挂起的自愈检测
-    func cancelRecoveryWorkItems() {
+    private func cancelRecoveryWorkItems() {
         recoveryWorkItems.forEach { $0.cancel() }
         recoveryWorkItems.removeAll()
     }
 
-    /// 当收到打断开始或被其他应用暂停时，通过系统后台任务保障 + 梯度轮询持续保活音频会话与控制中心
+    /// 当收到打断开始但可能由于第三方应用未发 .ended 时，通过梯度延迟轮询自愈
     func scheduleInterruptionRecovery() {
         cancelRecoveryWorkItems()
-        let intervals = [0.5, 1.2, 2.5, 4.0, 6.5, 10.0, 15.0, 20.0]
-        for (index, delay) in intervals.enumerated() {
-            let isLast = (index == intervals.count - 1)
+        let intervals = [0.8, 1.8, 3.2, 5.0, 8.0, 12.0, 18.0, 25.0]
+        for delay in intervals {
             let item = DispatchWorkItem { [weak self] in
                 guard let self = self else { return }
                 // 若其他应用已停止播放，尝试重新激活音频会话并刷新控制中心
@@ -71,12 +50,6 @@ final class AudioSessionManager {
                     self.cancelRecoveryWorkItems()
                     self.reactivateAudioSession()
                     NowPlayingManager.shared.reassertNowPlayingInfo()
-                } else {
-                    // 若其他应用仍在播放，仅刷新控制中心保持暂停展示，绝不强行抢占音频会话
-                    NowPlayingManager.shared.reassertNowPlayingInfo()
-                }
-                if isLast {
-                    self.endBackgroundAssertion()
                 }
             }
             recoveryWorkItems.append(item)
@@ -168,7 +141,6 @@ final class AudioSessionManager {
         switch type {
         case .began:
             print("[AudioSessionManager] 收到音频打断开始 (interruption began)，保持控制中心显示暂停状态")
-            beginBackgroundAssertion()
             NowPlayingManager.shared.handleInterruptionBegan()
             scheduleInterruptionRecovery()
 
@@ -182,7 +154,6 @@ final class AudioSessionManager {
             // 打断结束后重新激活音频会话，确保控制中心不会因为会话失活而消失
             reactivateAudioSession()
             NowPlayingManager.shared.handleInterruptionEnded(shouldResume: shouldResume)
-            scheduleInterruptionRecovery()
 
         @unknown default:
             break
@@ -199,9 +170,7 @@ final class AudioSessionManager {
         switch reason {
         case .oldDeviceUnavailable:
             print("[AudioSessionManager] 旧音频设备断开连接 (耳机拔出/蓝牙断开)，自动切换为暂停状态")
-            beginBackgroundAssertion()
             NowPlayingManager.shared.handleInterruptionBegan()
-            scheduleInterruptionRecovery()
         default:
             break
         }
@@ -217,7 +186,6 @@ final class AudioSessionManager {
         switch hintType {
         case .begin:
             print("[AudioSessionManager] 收到主导音频抢占提示，保持控制中心显示暂停状态")
-            beginBackgroundAssertion()
             NowPlayingManager.shared.handleInterruptionBegan()
             scheduleInterruptionRecovery()
         case .end:
@@ -225,7 +193,6 @@ final class AudioSessionManager {
             print("[AudioSessionManager] 主导音频播放完毕，重新激活音频会话并保持控制中心信息")
             reactivateAudioSession()
             NowPlayingManager.shared.handleInterruptionEnded(shouldResume: false)
-            scheduleInterruptionRecovery()
         @unknown default:
             break
         }

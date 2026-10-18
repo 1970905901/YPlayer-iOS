@@ -143,15 +143,14 @@ final class NowPlayingManager {
     }
 
     private func handleRemotePlay() {
-        AudioSessionManager.shared.cancelRecoveryWorkItems()
         AudioSessionManager.shared.reactivateAudioSession()
         isCurrentlyPlaying = true
-        var info = self.currentInfo
+        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? currentInfo
         info[MPNowPlayingInfoPropertyPlaybackRate] = 1.0
         info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
         info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         info[MPNowPlayingInfoPropertyIsLiveStream] = false
-        if let cached = cachedArtwork ?? (self.currentInfo[MPMediaItemPropertyArtwork] as? MPMediaItemArtwork) {
+        if let cached = cachedArtwork {
             info[MPMediaItemPropertyArtwork] = cached
         }
         currentInfo = info
@@ -162,19 +161,17 @@ final class NowPlayingManager {
 
     private func handleRemotePause() {
         isCurrentlyPlaying = false
-        var info = self.currentInfo
+        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? currentInfo
         info[MPNowPlayingInfoPropertyPlaybackRate] = 0.0
         info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
         info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         info[MPNowPlayingInfoPropertyIsLiveStream] = false
-        if let cached = cachedArtwork ?? (self.currentInfo[MPMediaItemPropertyArtwork] as? MPMediaItemArtwork) {
+        if let cached = cachedArtwork {
             info[MPMediaItemPropertyArtwork] = cached
         }
         currentInfo = info
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         MPNowPlayingInfoCenter.default().playbackState = .paused
-        AudioSessionManager.shared.scheduleInterruptionRecovery()
-        scheduleDelayedReassert()
         dispatchRemoteCommand("pause")
     }
 
@@ -187,9 +184,9 @@ final class NowPlayingManager {
     }
 
     private func handleRemoteSeek(to position: Double) {
-        var info = self.currentInfo
+        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? currentInfo
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = position
-        if let cached = cachedArtwork ?? (self.currentInfo[MPMediaItemPropertyArtwork] as? MPMediaItemArtwork) {
+        if let cached = cachedArtwork {
             info[MPMediaItemPropertyArtwork] = cached
         }
         currentInfo = info
@@ -201,19 +198,18 @@ final class NowPlayingManager {
     func handleInterruptionBegan() {
         print("[NowPlayingManager] 处理音频打断开始，更新控制中心为暂停状态")
         isCurrentlyPlaying = false
-        var info = self.currentInfo
+        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? currentInfo
         info[MPNowPlayingInfoPropertyPlaybackRate] = 0.0
         info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
         info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         info[MPNowPlayingInfoPropertyIsLiveStream] = false
-        if let cached = cachedArtwork ?? (self.currentInfo[MPMediaItemPropertyArtwork] as? MPMediaItemArtwork) {
+        if let cached = cachedArtwork {
             info[MPMediaItemPropertyArtwork] = cached
         }
         currentInfo = info
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         MPNowPlayingInfoCenter.default().playbackState = .paused
         enforceRemoteCommands()
-        scheduleDelayedReassert()
         dispatchRemoteCommand("pause")
     }
 
@@ -222,12 +218,12 @@ final class NowPlayingManager {
         print("[NowPlayingManager] 处理音频打断结束，维持控制中心信息，保持暂停状态，shouldResume: \(shouldResume)")
         isCurrentlyPlaying = false
         enforceRemoteCommands()
-        var info = self.currentInfo
+        var info = currentInfo
         info[MPNowPlayingInfoPropertyPlaybackRate] = 0.0
         info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
         info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         info[MPNowPlayingInfoPropertyIsLiveStream] = false
-        if let cached = cachedArtwork ?? (self.currentInfo[MPMediaItemPropertyArtwork] as? MPMediaItemArtwork) {
+        if let cached = cachedArtwork {
             info[MPMediaItemPropertyArtwork] = cached
         }
         currentInfo = info
@@ -246,7 +242,7 @@ final class NowPlayingManager {
             info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
             info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
             info[MPNowPlayingInfoPropertyIsLiveStream] = false
-            if let cached = self.cachedArtwork ?? (self.currentInfo[MPMediaItemPropertyArtwork] as? MPMediaItemArtwork) {
+            if let cached = self.cachedArtwork {
                 info[MPMediaItemPropertyArtwork] = cached
             }
             self.currentInfo = info
@@ -284,7 +280,7 @@ final class NowPlayingManager {
                 return
             }
 
-            var info = self.currentInfo
+            var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? self.currentInfo
             if !self.baseTitle.isEmpty {
                 let combinedTitle = self.baseArtist.isEmpty ? self.baseTitle : "\(self.baseTitle) - \(self.baseArtist)"
                 info[MPMediaItemPropertyTitle] = combinedTitle
@@ -300,7 +296,7 @@ final class NowPlayingManager {
             }
             info[MPNowPlayingInfoPropertyPlaybackRate] = self.isCurrentlyPlaying ? 1.0 : 0.0
             info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
-            if let cached = self.cachedArtwork ?? (self.currentInfo[MPMediaItemPropertyArtwork] as? MPMediaItemArtwork) {
+            if let cached = self.cachedArtwork {
                 info[MPMediaItemPropertyArtwork] = cached
             }
             self.currentInfo = info
@@ -311,12 +307,7 @@ final class NowPlayingManager {
 
     /// 更新锁屏及控制中心播放信息
     func updateNowPlaying(info: PlaybackStateInfo) {
-        if info.isPlaying {
-            AudioSessionManager.shared.cancelRecoveryWorkItems()
-            AudioSessionManager.shared.reactivateAudioSession()
-        } else {
-            AudioSessionManager.shared.scheduleInterruptionRecovery()
-        }
+        AudioSessionManager.shared.reactivateAudioSession()
         baseArtist = info.artist
         baseTitle = info.title
         currentLyric = ""
@@ -335,9 +326,8 @@ final class NowPlayingManager {
         nowPlayingInfo[MPMediaItemPropertyArtist] = displayArtist
 
         nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = info.album
-        let duration = info.duration > 0 ? info.duration : (self.currentInfo[MPMediaItemPropertyPlaybackDuration] as? Double ?? 0.0)
-        if duration > 0 {
-            nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration
+        if info.duration > 0 {
+            nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = info.duration
         }
         nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = max(0, info.currentTime)
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = info.isPlaying ? (info.playbackRate > 0 ? info.playbackRate : 1.0) : 0.0
@@ -358,9 +348,6 @@ final class NowPlayingManager {
             self.currentInfo = nowPlayingInfo
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
             MPNowPlayingInfoCenter.default().playbackState = info.isPlaying ? .playing : .paused
-            if !info.isPlaying {
-                scheduleDelayedReassert()
-            }
             return
         }
 
@@ -372,18 +359,14 @@ final class NowPlayingManager {
         }
 
         // Case 3: 同一首歌曲且封面已有缓存
-        if cleanArtworkUrl == currentArtworkUrl, let cached = cachedArtwork ?? (self.currentInfo[MPMediaItemPropertyArtwork] as? MPMediaItemArtwork) {
+        if cleanArtworkUrl == currentArtworkUrl, let cached = cachedArtwork {
             artworkLoadTimeoutWorkItem?.cancel()
             artworkLoadTimeoutWorkItem = nil
             pendingNowPlayingInfo = nil
-            cachedArtwork = cached
             nowPlayingInfo[MPMediaItemPropertyArtwork] = cached
             self.currentInfo = nowPlayingInfo
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
             MPNowPlayingInfoCenter.default().playbackState = info.isPlaying ? .playing : .paused
-            if !info.isPlaying {
-                scheduleDelayedReassert()
-            }
             return
         }
 
@@ -402,9 +385,6 @@ final class NowPlayingManager {
             self.currentInfo = nowPlayingInfo
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
             MPNowPlayingInfoCenter.default().playbackState = info.isPlaying ? .playing : .paused
-            if !info.isPlaying {
-                scheduleDelayedReassert()
-            }
             return
         }
 
@@ -421,27 +401,12 @@ final class NowPlayingManager {
             self.currentInfo = pending
             MPNowPlayingInfoCenter.default().nowPlayingInfo = pending
             MPNowPlayingInfoCenter.default().playbackState = self.isCurrentlyPlaying ? .playing : .paused
-            if !self.isCurrentlyPlaying {
-                self.scheduleDelayedReassert()
-            }
         }
         self.artworkLoadTimeoutWorkItem = timeoutWorkItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: timeoutWorkItem)
 
         // 启动异步下载
         loadArtwork(from: cleanArtworkUrl, isPreload: false)
-    }
-
-    /// 延迟重申，确保覆盖 WebKit 异步暂停可能带来的媒体中心清空
-    func scheduleDelayedReassert() {
-        let delays = [0.15, 0.45]
-        for delay in delays {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                guard let self = self, !self.isCurrentlyPlaying, !self.currentInfo.isEmpty else { return }
-                MPNowPlayingInfoCenter.default().nowPlayingInfo = self.currentInfo
-                MPNowPlayingInfoCenter.default().playbackState = .paused
-            }
-        }
     }
 
     /// 规范化封面图片 URL

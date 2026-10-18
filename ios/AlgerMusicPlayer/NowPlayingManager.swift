@@ -212,7 +212,12 @@ final class NowPlayingManager {
     func handleInterruptionBegan(allowAutoResume: Bool = true) {
         onMain { [weak self] in
             guard let self = self else { return }
-            self.shouldResumeAfterInterruption = allowAutoResume && self.isCurrentlyPlaying
+            if allowAutoResume {
+                // 同一次打断可能重复上报 began；不能把第一次记录的恢复意图覆盖成 false。
+                self.shouldResumeAfterInterruption = self.shouldResumeAfterInterruption || self.isCurrentlyPlaying
+            } else {
+                self.shouldResumeAfterInterruption = false
+            }
             self.isCurrentlyPlaying = false
             self.publishCurrentInfo()
             self.schedulePausedStateReassert()

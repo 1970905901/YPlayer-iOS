@@ -18,7 +18,11 @@ export interface PlaybackStatePayload {
 export type HapticStyle =
   'light' | 'medium' | 'heavy' | 'selection' | 'success' | 'warning' | 'error';
 
+type RemoteCommandHandler = (command: string, arg?: any) => void | Promise<void>;
+
 class NativeBridge {
+  private remoteCommandHandler: RemoteCommandHandler | null = null;
+
   /**
    * 判断是否运行在 iOS 原生 WKWebView 容器中
    */
@@ -39,10 +43,16 @@ class NativeBridge {
     if (typeof window === 'undefined') return;
 
     (window as any).__NATIVE_BRIDGE__ = {
-      handleRemoteCommand: (command: string, arg?: any) => {
-        this.dispatchRemoteCommand(command, arg);
-      }
+      // 返回 Promise，让原生 callAsyncJavaScript 能等待命令真正执行完成。
+      handleRemoteCommand: (command: string, arg?: any) => this.dispatchRemoteCommand(command, arg)
     };
+  }
+
+  /**
+   * 预注册远程命令处理器，避免后台切歌时依赖动态 import 和模块唤醒。
+   */
+  public setRemoteCommandHandler(handler: RemoteCommandHandler) {
+    this.remoteCommandHandler = handler;
   }
 
   /**
@@ -138,6 +148,11 @@ class NativeBridge {
    */
   private async dispatchRemoteCommand(command: string, arg?: any) {
     try {
+      if (this.remoteCommandHandler) {
+        await this.remoteCommandHandler(command, arg);
+        return;
+      }
+
       const { usePlayerStore } = await import('@/store/modules/player');
       const { usePlaylistStore } = await import('@/store/modules/playlist');
       const { audioService } = await import('@/services/audioService');
@@ -147,9 +162,13 @@ class NativeBridge {
       switch (command) {
         case 'play':
           if (audioService.getCurrentSound()?.src) {
-            audioService.resume();
-            playerStore.setIsPlay(true);
-            playerStore.userPlayIntent = true;
+            if (await audioService.resume()) {
+              playerStore.setIsPlay(true);
+              playerStore.userPlayIntent = true;
+            } else {
+              playerStore.setIsPlay(false);
+              playerStore.userPlayIntent = false;
+            }
           } else if (playerStore.playMusic?.id) {
             const { playTrack } = await import('@/services/playbackController');
             await playTrack(playerStore.playMusic, true);
@@ -167,9 +186,13 @@ class NativeBridge {
             playerStore.setIsPlay(false);
             playerStore.userPlayIntent = false;
           } else if (audioService.getCurrentSound()?.src) {
-            audioService.resume();
-            playerStore.setIsPlay(true);
-            playerStore.userPlayIntent = true;
+            if (await audioService.resume()) {
+              playerStore.setIsPlay(true);
+              playerStore.userPlayIntent = true;
+            } else {
+              playerStore.setIsPlay(false);
+              playerStore.userPlayIntent = false;
+            }
           } else if (playerStore.playMusic?.id) {
             const { playTrack } = await import('@/services/playbackController');
             await playTrack(playerStore.playMusic, true);
@@ -191,6 +214,7 @@ class NativeBridge {
       }
     } catch (err) {
       console.error('[NativeBridge] Error handling remote command:', err);
+      throw err;
     }
   }
 }

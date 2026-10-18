@@ -3,6 +3,7 @@ import { computed, type ComputedRef, nextTick, onUnmounted, ref, watch } from 'v
 
 import useIndexedDB from '@/hooks/IndexDBHook';
 import { audioService } from '@/services/audioService';
+import { nativeBridge } from '@/services/nativeBridge';
 import type { usePlayerStore } from '@/store';
 import type { Artist, ILyricText, SongResult } from '@/types/music';
 import { isElectron } from '@/utils';
@@ -29,6 +30,64 @@ export const initMusicHook = (store: ReturnType<typeof usePlayerStore>) => {
   setupMusicWatchers();
   setupCorrectionTimeWatcher();
   setupPlayStateWatcher();
+
+  // 预注册原生远程命令，避免 App 在游戏/后台时动态 import 模块失败或延迟。
+  nativeBridge.setRemoteCommandHandler(async (command, arg) => {
+    const store = getPlayerStore();
+
+    switch (command) {
+      case 'play':
+        if (audioService.getCurrentSound()?.src) {
+          if (await audioService.resume()) {
+            store.setIsPlay(true);
+            store.userPlayIntent = true;
+          } else {
+            store.setIsPlay(false);
+            store.userPlayIntent = false;
+          }
+        } else if (store.playMusic?.id) {
+          const { playTrack } = await import('@/services/playbackController');
+          await playTrack(store.playMusic, true);
+        }
+        break;
+      case 'pause':
+        audioService.pause();
+        store.setIsPlay(false);
+        store.userPlayIntent = false;
+        break;
+      case 'togglePlayPause':
+        if (audioService.isPlaying()) {
+          audioService.pause();
+          store.setIsPlay(false);
+          store.userPlayIntent = false;
+        } else if (audioService.getCurrentSound()?.src) {
+          if (await audioService.resume()) {
+            store.setIsPlay(true);
+            store.userPlayIntent = true;
+          } else {
+            store.setIsPlay(false);
+            store.userPlayIntent = false;
+          }
+        } else if (store.playMusic?.id) {
+          const { playTrack } = await import('@/services/playbackController');
+          await playTrack(store.playMusic, true);
+        }
+        break;
+      case 'nextTrack':
+        await store.nextPlay();
+        break;
+      case 'previousTrack':
+        await store.prevPlay();
+        break;
+      case 'changePlaybackPosition':
+        if (typeof arg === 'number') {
+          audioService.seek(arg);
+        }
+        break;
+      default:
+        console.warn('[MusicHook] Unknown native remote command:', command);
+    }
+  });
 };
 
 // 获取 playerStore 的辅助函数

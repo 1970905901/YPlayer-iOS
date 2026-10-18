@@ -722,18 +722,16 @@ class AudioService {
     });
   }
 
-  public resume() {
+  public async resume(): Promise<boolean> {
     this.forceResetOperationLock();
     try {
-      void this.audio.play().catch((error) => {
-        console.error('恢复音频播放失败:', error);
-        this.updateMediaSessionState(false);
-        this.emit('pause');
-      });
+      await this.audio.play();
+      return true;
     } catch (error) {
       console.error('恢复音频播放失败:', error);
       this.updateMediaSessionState(false);
       this.emit('pause');
+      return false;
     }
   }
 

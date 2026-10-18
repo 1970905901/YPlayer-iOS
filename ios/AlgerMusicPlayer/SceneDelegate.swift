@@ -24,6 +24,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         UIApplication.shared.beginReceivingRemoteControlEvents()
+        AudioSessionManager.shared.reactivateAudioSession()
+        NowPlayingManager.shared.reassertNowPlayingInfo()
     }
 
     func sceneWillResignActive(_ scene: UIScene) {}

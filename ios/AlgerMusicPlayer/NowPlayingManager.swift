@@ -143,6 +143,7 @@ final class NowPlayingManager {
     }
 
     private func handleRemotePlay() {
+        AudioSessionManager.shared.reactivateAudioSession()
         isCurrentlyPlaying = true
         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? currentInfo
         info[MPNowPlayingInfoPropertyPlaybackRate] = 1.0
@@ -189,6 +190,60 @@ final class NowPlayingManager {
         currentInfo = info
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         dispatchRemoteCommand("changePlaybackPosition", arg: position)
+    }
+
+    /// 当被其他应用或系统打断播放时调用：保持控制中心存在，展示暂停状态
+    func handleInterruptionBegan() {
+        print("[NowPlayingManager] 处理音频打断开始，更新控制中心为暂停状态")
+        isCurrentlyPlaying = false
+        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? currentInfo
+        info[MPNowPlayingInfoPropertyPlaybackRate] = 0.0
+        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
+        info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+        info[MPNowPlayingInfoPropertyIsLiveStream] = false
+        if let cached = cachedArtwork {
+            info[MPMediaItemPropertyArtwork] = cached
+        }
+        currentInfo = info
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        enforceRemoteCommands()
+        dispatchRemoteCommand("pause")
+    }
+
+    /// 当音频打断结束时调用：维持控制中心暂停状态与元数据，支持用户点击继续播放
+    func handleInterruptionEnded(shouldResume: Bool) {
+        print("[NowPlayingManager] 处理音频打断结束，维持控制中心信息，保持暂停状态，shouldResume: \(shouldResume)")
+        isCurrentlyPlaying = false
+        enforceRemoteCommands()
+        var info = currentInfo
+        info[MPNowPlayingInfoPropertyPlaybackRate] = 0.0
+        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
+        info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+        info[MPNowPlayingInfoPropertyIsLiveStream] = false
+        if let cached = cachedArtwork {
+            info[MPMediaItemPropertyArtwork] = cached
+        }
+        currentInfo = info
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    /// 确保当前歌曲元数据与控制中心同步（音频服务重置或应用激活时使用）
+    func reassertNowPlayingInfo() {
+        guard !currentInfo.isEmpty else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.enforceRemoteCommands()
+            var info = self.currentInfo
+            info[MPNowPlayingInfoPropertyPlaybackRate] = self.isCurrentlyPlaying ? 1.0 : 0.0
+            info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
+            info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+            info[MPNowPlayingInfoPropertyIsLiveStream] = false
+            if let cached = self.cachedArtwork {
+                info[MPMediaItemPropertyArtwork] = cached
+            }
+            self.currentInfo = info
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        }
     }
 
     /// 向前端分发远程事件
@@ -246,6 +301,9 @@ final class NowPlayingManager {
 
     /// 更新锁屏及控制中心播放信息
     func updateNowPlaying(info: PlaybackStateInfo) {
+        if info.isPlaying {
+            AudioSessionManager.shared.reactivateAudioSession()
+        }
         baseArtist = info.artist
         baseTitle = info.title
         currentLyric = ""

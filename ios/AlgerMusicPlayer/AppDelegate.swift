@@ -19,6 +19,12 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         return true
     }
 
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        application.beginReceivingRemoteControlEvents()
+        AudioSessionManager.shared.reactivateAudioSession()
+        NowPlayingManager.shared.reassertNowPlayingInfo()
+    }
+
     // MARK: - UISceneSession Lifecycle
 
     @available(iOS 13.0, *)

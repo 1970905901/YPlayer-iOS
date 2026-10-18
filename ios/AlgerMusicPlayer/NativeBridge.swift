@@ -53,6 +53,9 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         case "copyToClipboard":
             handleCopyToClipboard(payload: body)
 
+        case "copyPlaybackDiagnostics":
+            handleCopyPlaybackDiagnostics(payload: body)
+
         case "preloadArtwork":
             handlePreloadArtwork(payload: body)
 
@@ -92,6 +95,14 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         guard let text = payload["text"] as? String, !text.isEmpty else { return }
         DispatchQueue.main.async {
             UIPasteboard.general.string = text
+        }
+    }
+
+    private func handleCopyPlaybackDiagnostics(payload: [String: Any]) {
+        let jsText = payload["text"] as? String ?? ""
+        let combined = jsText + "\n\n--- NativeAudioManager ---\n" + NativeAudioManager.shared.diagnosticsText()
+        DispatchQueue.main.async {
+            UIPasteboard.general.string = combined
         }
     }
 

@@ -154,6 +154,15 @@ class NativeBridge {
     this.postMessage('nativeAudioUpdateLyric', { text });
   }
 
+  /** 复制前端与原生播放诊断，iOS 直接写入 UIPasteboard。 */
+  public copyPlaybackDiagnostics(text: string) {
+    if (!this.isIOS) {
+      void navigator.clipboard?.writeText(text);
+      return;
+    }
+    this.postMessage('copyPlaybackDiagnostics', { text });
+  }
+
   /** 复制诊断文本；iOS 使用原生 UIPasteboard，避免 WKWebView 权限差异。 */
   public copyToClipboard(text: string) {
     if (!text) return;

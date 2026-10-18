@@ -850,6 +850,7 @@ class AudioService {
         // Change source and load
         this.audio.src = url;
         this.updateNativeAudioMetadata(track);
+        (this.audio as any).setAutoplay?.(isPlay);
         this.audio.load();
       };
 

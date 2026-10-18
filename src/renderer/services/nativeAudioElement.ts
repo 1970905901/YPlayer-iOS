@@ -31,6 +31,7 @@ export class NativeAudioElement {
   private currentTimeValue = 0;
   private playbackRateValue = 1;
   private volumeValue = 1;
+  private autoplay = false;
   private metadata: NativeAudioMetadata | null = null;
   private listeners = new Map<string, Set<ListenerEntry>>();
   private pendingPlay: {
@@ -93,6 +94,10 @@ export class NativeAudioElement {
     nativeBridge.nativeAudioUpdateLyric(text);
   }
 
+  public setAutoplay(value: boolean) {
+    this.autoplay = value;
+  }
+
   public load() {
     this.error = null;
     this.ended = false;
@@ -116,7 +121,7 @@ export class NativeAudioElement {
     nativeBridge.nativeAudioLoad({
       url: this.src,
       ...(this.metadata ?? {}),
-      autoplay: false,
+      autoplay: this.autoplay,
       position: 0,
       rate: this.playbackRate,
       volume: this.muted ? 0 : this.volume

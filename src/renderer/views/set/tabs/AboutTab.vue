@@ -152,7 +152,7 @@ const checkForUpdates = async (isClick = false) => {
 };
 
 const copyPlaybackDiagnostics = () => {
-  nativeBridge.copyToClipboard(playbackDiagnostics.snapshot());
+  nativeBridge.copyPlaybackDiagnostics(playbackDiagnostics.snapshot());
   message.success(t('settings.about.diagnosticsCopied'));
 };
 

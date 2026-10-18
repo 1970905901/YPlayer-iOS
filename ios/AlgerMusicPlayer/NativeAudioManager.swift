@@ -42,6 +42,7 @@ final class NativeAudioManager {
     private var isCategoryConfigured = false
     private var remoteCommandsConfigured = false
     private var isStarted = false
+    private var diagnosticLines: [String] = []
 
     private init() {}
 
@@ -74,7 +75,7 @@ final class NativeAudioManager {
                 try session.setActive(true)
             }
         } catch {
-            print("[NativeAudioManager] configure audio session failed: \(error.localizedDescription)")
+            logEvent("audio session failed \(error.localizedDescription)")
         }
     }
 
@@ -131,7 +132,7 @@ final class NativeAudioManager {
             isInterruptionActive = true
             emit("interruptionBegan", ["intent": userPlayIntent])
             pauseInternal(preserveIntent: true)
-            print("[NativeAudioManager] interruption began; user intent preserved: \(userPlayIntent)")
+            logEvent("interruption began intent=\(userPlayIntent)")
         case .ended:
             isInterruptionActive = false
             let rawOptions = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
@@ -140,7 +141,7 @@ final class NativeAudioManager {
                 "intent": userPlayIntent,
                 "shouldResume": options.contains(.shouldResume)
             ])
-            print("[NativeAudioManager] interruption ended; shouldResume=\(options.contains(.shouldResume)); intent=\(userPlayIntent)")
+            logEvent("interruption ended shouldResume=\(options.contains(.shouldResume)) intent=\(userPlayIntent)")
             if userPlayIntent {
                 play()
             }
@@ -210,13 +211,27 @@ final class NativeAudioManager {
         userPlayIntent = pendingAutoplay
         player.volume = currentVolume
 
-        let item = AVPlayerItem(url: url)
+        let item: AVPlayerItem
+        if url.isFileURL {
+            item = AVPlayerItem(url: url)
+        } else {
+            var headers: [String: String] = [
+                "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+                "Accept": "*/*"
+            ]
+            if let host = url.host?.lowercased(), host.contains("163.com") || host.contains("126.net") {
+                headers["Referer"] = "https://music.163.com"
+            }
+            let assetOptions: [String: Any] = ["AVURLAssetHTTPHeaderFieldsKey": headers]
+            let asset = AVURLAsset(url: url, options: assetOptions)
+            item = AVPlayerItem(asset: asset)
+        }
         currentItem = item
         observeItem(item)
         observeEnd(item)
         player.replaceCurrentItem(with: item)
         updateNowPlaying()
-        print("[NativeAudioManager] load \(urlString)")
+        logEvent("load url=\(urlString) title=\(string(metadata["title"])) rate=\(currentRate) volume=\(currentVolume)")
     }
 
     func play() {
@@ -254,6 +269,7 @@ final class NativeAudioManager {
             toleranceAfter: .zero
         ) { [weak self] finished in
             guard finished, let self = self else { return }
+            self.logEvent("seeked to \(self.currentTime)")
             self.updateNowPlaying()
             self.emit("seeked", [
                 "currentTime": self.currentTime,
@@ -314,7 +330,12 @@ final class NativeAudioManager {
         artworkTask = nil
     }
 
+    func diagnosticsText() -> String {
+        diagnosticLines.joined(separator: "\n")
+    }
+
     private func playInternal() {
+        guard !isPlaying || player.rate == 0 else { return }
         guard let item = currentItem, item.status == .readyToPlay else {
             pendingAutoplay = true
             return
@@ -323,6 +344,7 @@ final class NativeAudioManager {
         player.play()
         player.rate = currentRate
         isPlaying = true
+        logEvent("playing rate=\(currentRate) time=\(currentTime)")
         pendingAutoplay = false
         updateNowPlaying()
         emit("play", [
@@ -338,6 +360,7 @@ final class NativeAudioManager {
         player.pause()
         pendingAutoplay = false
         isPlaying = false
+        logEvent("paused preserveIntent=\(preserveIntent) time=\(currentTime)")
         updateNowPlaying()
         emit("pause", [
             "currentTime": currentTime,
@@ -406,7 +429,7 @@ final class NativeAudioManager {
             }
         case .failed:
             let message = item.error?.localizedDescription ?? "native-audio-item-failed"
-            print("[NativeAudioManager] item failed: \(message)")
+            logEvent("item failed \(message)")
             emit("error", ["code": 4, "message": message])
         default:
             break
@@ -621,6 +644,15 @@ final class NativeAudioManager {
         DispatchQueue.main.async { [weak self] in
             self?.onEvent?(event, payload)
         }
+    }
+
+    private func logEvent(_ message: String) {
+        let formatter = ISO8601DateFormatter()
+        diagnosticLines.append("\(formatter.string(from: Date())) \(message)")
+        if diagnosticLines.count > 160 {
+            diagnosticLines.removeFirst(diagnosticLines.count - 160)
+        }
+        print("[NativeAudioManager] \(message)")
     }
 
     private func number(_ value: Any?) -> Double {

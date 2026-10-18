@@ -2,7 +2,7 @@ import Foundation
 import AVFoundation
 
 /// 管理应用音频会话及系统音频中断/路由变化事件。
-/// 次级音频提示不改变播放状态；真实打断结束后按系统建议恢复，暂停时仅在无其他音频时恢复卡片资格。
+/// 使用混音类别避免游戏/短视频音频抢占独占会话；真实打断结束后按用户播放意图恢复。
 final class AudioSessionManager {
     static let shared = AudioSessionManager()
 
@@ -50,8 +50,8 @@ final class AudioSessionManager {
         recoveryWorkItems.removeAll()
     }
 
-    /// 打断会临时撤销音频会话资格。若当前没有其他音频在播放，
-    /// 在限定时间内恢复会话并重申暂停中的 Now Playing 卡片；不恢复实际音频。
+    /// 打断会临时撤销音频会话资格；在限定时间内按用户播放意图恢复真实播放，
+    /// 无法恢复时再重申暂停中的 Now Playing 卡片。
     func schedulePausedItemRecovery() {
         cancelPausedItemRecovery()
         guard NowPlayingManager.shared.hasActiveNowPlayingItem,
@@ -68,14 +68,15 @@ final class AudioSessionManager {
                     self.cancelPausedItemRecovery()
                     return
                 }
-                guard !AVAudioSession.sharedInstance().isOtherAudioPlaying else { return }
-
-                // 打断前正在播放时恢复真实播放，Control Center 才能重新持有 Now Playing 资格。
+                // 打断前正在播放时优先恢复真实播放，Control Center 才能重新持有 Now Playing 资格。
+                // 混音会话允许在游戏仍在发声时恢复，不因 isOtherAudioPlaying 一直卡住。
                 if NowPlayingManager.shared.resumeAfterInterruptionIfPossible() {
-                    self.cancelPausedItemRecovery()
+                    // 保留后续重试；WebKit 确认真正播放后会自动取消恢复任务。
                     return
                 }
 
+                // 仅暂停卡片需要避开其他 App 的独占会话；没有其他音频时重新激活并重申元数据。
+                guard !AVAudioSession.sharedInstance().isOtherAudioPlaying else { return }
                 guard self.reactivateAudioSession() else { return }
                 self.cancelPausedItemRecovery()
                 NowPlayingManager.shared.reassertNowPlayingInfo()
@@ -94,7 +95,8 @@ final class AudioSessionManager {
             try session.setCategory(
                 .playback,
                 mode: .default,
-                options: [.allowAirPlay, .allowBluetoothA2DP]
+                // 游戏、短视频等音频不应把本 App 的独占会话打断；音乐可与其混音。
+                options: [.mixWithOthers, .allowAirPlay, .allowBluetoothA2DP]
             )
             if activate {
                 try session.setActive(true)
@@ -166,13 +168,8 @@ final class AudioSessionManager {
             let shouldResume = options.contains(.shouldResume)
             print("[AudioSessionManager] 收到音频打断结束，shouldResume: \(shouldResume)")
 
-            // 不自动恢复实际播放，但在没有其他音频时恢复暂停中的控制中心卡片。
+            // 由 NowPlayingManager 按用户播放意图决定是否恢复；随后统一进入重试/暂停卡片恢复。
             NowPlayingManager.shared.handleInterruptionEnded(shouldResume: shouldResume)
-            if !NowPlayingManager.shared.isCurrentlyPlayingForAudioSession,
-               !AVAudioSession.sharedInstance().isOtherAudioPlaying,
-               self.reactivateAudioSession() {
-                NowPlayingManager.shared.reassertNowPlayingInfo()
-            }
             schedulePausedItemRecovery()
 
         @unknown default:

@@ -72,6 +72,7 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         let duration = payload["duration"] as? Double ?? 0.0
         let currentTime = payload["currentTime"] as? Double ?? 0.0
         let playbackRate = payload["playbackRate"] as? Double ?? 1.0
+        let userPlayIntent = payload["userPlayIntent"] as? Bool ?? isPlaying
 
         let info = PlaybackStateInfo(
             isPlaying: isPlaying,
@@ -81,7 +82,8 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
             artworkUrl: artworkUrl,
             duration: duration,
             currentTime: currentTime,
-            playbackRate: playbackRate
+            playbackRate: playbackRate,
+            userPlayIntent: userPlayIntent
         )
 
         NowPlayingManager.shared.updateNowPlaying(info: info)

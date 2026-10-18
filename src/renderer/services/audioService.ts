@@ -15,6 +15,8 @@ class AudioService {
   private bypass = false;
 
   private playbackRate = 1.0;
+  // 独立于 HTMLAudioElement 的真实状态：系统打断会造成 pause，但用户播放意图仍应保留。
+  private userPlayIntent = false;
   private currentSinkId: string = 'default';
   private _isLoading = false;
 
@@ -73,6 +75,7 @@ class AudioService {
     this.audio.addEventListener('play', () => {
       // 以元素真实状态为准，避免快速切歌时迟到的 play/pause 事件覆盖新状态。
       const isPlaying = !this.audio.paused && !this.audio.ended;
+      if (isPlaying) this.userPlayIntent = true;
       this.updateMediaSessionState(isPlaying);
       if (isPlaying) this.emit('play');
     });
@@ -84,6 +87,7 @@ class AudioService {
     });
 
     this.audio.addEventListener('ended', () => {
+      this.userPlayIntent = false;
       this.emit('end');
     });
 
@@ -352,6 +356,7 @@ class AudioService {
 
       nativeBridge.updatePlayState({
         isPlaying: activeIsPlaying,
+        userPlayIntent: this.userPlayIntent,
         title: this.currentTrack.name || '',
         artist: artists ? artists.join(' / ') : '',
         album: album || '',
@@ -602,6 +607,7 @@ class AudioService {
     // Check if same URL — just resume/seek
     const currentSrc = this.audio.src;
     const isSameUrl = currentSrc && currentSrc === url;
+    this.userPlayIntent = isPlay;
 
     if (isSameUrl) {
       this.currentTrack = track;
@@ -724,6 +730,7 @@ class AudioService {
 
   public async resume(): Promise<boolean> {
     this.forceResetOperationLock();
+    this.userPlayIntent = true;
     try {
       await this.audio.play();
       return true;
@@ -737,6 +744,7 @@ class AudioService {
 
   public pause() {
     this.forceResetOperationLock();
+    this.userPlayIntent = false;
     try {
       this.audio.pause();
     } catch (error) {
@@ -746,6 +754,7 @@ class AudioService {
 
   public stop() {
     this.forceResetOperationLock();
+    this.userPlayIntent = false;
     // 移除尚未结算的加载监听器，避免 stop 后旧的 canplay/error 仍触发过期回调
     if (this.pendingLoadCleanup) {
       this.pendingLoadCleanup();

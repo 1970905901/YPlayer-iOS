@@ -12,6 +12,8 @@ struct PlaybackStateInfo {
     let duration: Double
     let currentTime: Double
     let playbackRate: Double
+    /// 用户是否希望播放。系统打断造成的 pause 不会清除该意图。
+    let userPlayIntent: Bool
 }
 
 /// 负责系统媒体中心 (MPNowPlayingInfoCenter) 及远程控制 (MPRemoteCommandCenter) 的管理。
@@ -39,6 +41,9 @@ final class NowPlayingManager {
     private var isCurrentlyPlaying: Bool = false
     private var pausedReassertWorkItem: DispatchWorkItem?
     private var shouldResumeAfterInterruption = false
+    private var lastPlaybackIntent = false
+    private var automaticResumeAttempts = 0
+    private let maxAutomaticResumeAttempts = 3
 
     /// 给音频会话恢复逻辑使用；仅表示当前仍有一首需要展示的歌曲。
     var hasActiveNowPlayingItem: Bool {
@@ -49,12 +54,24 @@ final class NowPlayingManager {
         isCurrentlyPlaying
     }
 
-    /// 打断前正在播放、当前已暂停且仍有媒体项时，允许恢复真实播放。
+    /// 打断前正在播放、当前已暂停且仍有媒体项时，调度真实播放。
+    /// 不在这里乐观改写播放状态：只有 WKWebView 真正恢复播放后才清除恢复意图。
     func resumeAfterInterruptionIfPossible() -> Bool {
         guard shouldResumeAfterInterruption, !isCurrentlyPlaying, hasActiveNowPlayingItem else {
             return false
         }
-        handleRemotePlay()
+        guard automaticResumeAttempts < maxAutomaticResumeAttempts else {
+            shouldResumeAfterInterruption = false
+            return false
+        }
+
+        automaticResumeAttempts += 1
+        lastPlaybackIntent = true
+        pausedReassertWorkItem?.cancel()
+        pausedReassertWorkItem = nil
+        AudioSessionManager.shared.reactivateAudioSession()
+        print("[NowPlayingManager] 调度打断恢复播放，第 \(automaticResumeAttempts) 次")
+        dispatchRemoteCommand("play")
         return true
     }
 
@@ -173,6 +190,8 @@ final class NowPlayingManager {
         pausedReassertWorkItem?.cancel()
         pausedReassertWorkItem = nil
         shouldResumeAfterInterruption = false
+        automaticResumeAttempts = 0
+        lastPlaybackIntent = true
         AudioSessionManager.shared.cancelPausedItemRecovery()
         let wasPlaying = isCurrentlyPlaying
         isCurrentlyPlaying = true
@@ -185,6 +204,8 @@ final class NowPlayingManager {
 
     private func handleRemotePause() {
         shouldResumeAfterInterruption = false
+        automaticResumeAttempts = 0
+        lastPlaybackIntent = false
         isCurrentlyPlaying = false
         publishCurrentInfo()
         schedulePausedStateReassert()
@@ -221,11 +242,18 @@ final class NowPlayingManager {
     func handleInterruptionBegan(allowAutoResume: Bool = true) {
         onMain { [weak self] in
             guard let self = self else { return }
+            // WKWebView 可能先因打断收到 pause，再收到 AVAudioSession 通知。
+            // lastPlaybackIntent 能保留“用户原本要播放”的事实，避免漏掉自动恢复。
+            let wasPlayingBeforeInterruption = self.isCurrentlyPlaying || self.lastPlaybackIntent
             if allowAutoResume {
                 // 同一次打断可能重复上报 began；不能把第一次记录的恢复意图覆盖成 false。
-                self.shouldResumeAfterInterruption = self.shouldResumeAfterInterruption || self.isCurrentlyPlaying
+                self.shouldResumeAfterInterruption = self.shouldResumeAfterInterruption
+                    || wasPlayingBeforeInterruption
+                self.automaticResumeAttempts = 0
             } else {
                 self.shouldResumeAfterInterruption = false
+                self.automaticResumeAttempts = 0
+                self.lastPlaybackIntent = false
             }
             self.isCurrentlyPlaying = false
             self.publishCurrentInfo()
@@ -251,14 +279,13 @@ final class NowPlayingManager {
 
             // 以用户真实播放意图为主；系统 shouldResume 仅作为诊断信息。
             let canResume = self.shouldResumeAfterInterruption
-            self.shouldResumeAfterInterruption = false
 
-            if canResume {
-                print("[NowPlayingManager] 音频打断结束，恢复真实播放（系统建议: \(shouldResume)）")
-                self.handleRemotePlay()
+            if canResume, self.resumeAfterInterruptionIfPossible() {
+                print("[NowPlayingManager] 音频打断结束，调度恢复真实播放（系统建议: \(shouldResume)）")
                 return
             }
 
+            self.shouldResumeAfterInterruption = false
             self.isCurrentlyPlaying = false
             self.publishCurrentInfo()
             self.schedulePausedStateReassert()
@@ -266,11 +293,12 @@ final class NowPlayingManager {
         }
     }
 
-    /// 重新发布当前状态（音频服务重置、应用回到前台时使用）。仅在正在播放时确保会话有效。
+    /// 重新发布当前状态（音频服务重置、应用回到前台时使用）。
+    /// 只要仍有媒体项就保持混音会话有效，确保暂停卡片也不会被系统立即移除。
     func reassertNowPlayingInfo() {
         onMain { [weak self] in
             guard let self = self, !self.currentInfo.isEmpty else { return }
-            if self.isCurrentlyPlaying {
+            if self.hasActiveNowPlayingItem {
                 AudioSessionManager.shared.reactivateAudioSession()
             }
             self.enforceRemoteCommands()
@@ -309,6 +337,7 @@ final class NowPlayingManager {
         let rate = info.playbackRate.isFinite && info.playbackRate > 0 ? info.playbackRate : 1.0
         currentPlaybackRate = rate
         isCurrentlyPlaying = info.isPlaying
+        lastPlaybackIntent = info.userPlayIntent
 
         let trackKey = [title, artist, album, artworkURL].joined(separator: "\u{1F}")
         let trackChanged = trackKey != currentTrackKey
@@ -320,9 +349,18 @@ final class NowPlayingManager {
         baseTitle = title
         baseArtist = artist
 
-        // 播放中每次元数据更新都确保会话有效；暂停和缓冲阶段仍然不激活，避免抢占其他 App。
+        // 播放和暂停期间都保持混音会话有效，避免刚暂停/刚被打断就从控制中心消失。
         if info.isPlaying {
             shouldResumeAfterInterruption = false
+            automaticResumeAttempts = 0
+            AudioSessionManager.shared.reactivateAudioSession()
+        } else {
+            if !info.userPlayIntent {
+                // 用户在 App 或控制中心明确暂停时，取消尚未完成的打断恢复。
+                shouldResumeAfterInterruption = false
+                automaticResumeAttempts = 0
+            }
+            // 混音会话在暂停时继续有效，避免刚暂停/刚被打断就从控制中心消失。
             AudioSessionManager.shared.reactivateAudioSession()
         }
 

@@ -101,6 +101,16 @@ class NativeBridge {
     this.postMessage('preloadArtwork', { artworkUrl: url });
   }
 
+  /** 复制诊断文本；iOS 使用原生 UIPasteboard，避免 WKWebView 权限差异。 */
+  public copyToClipboard(text: string) {
+    if (!text) return;
+    if (!this.isIOS) {
+      void navigator.clipboard?.writeText(text);
+      return;
+    }
+    this.postMessage('copyToClipboard', { text });
+  }
+
   /**
    * 触发原生震动触觉反馈 (UIFeedbackGenerator)
    */

@@ -4,6 +4,7 @@ import { computed, type ComputedRef, nextTick, onUnmounted, ref, watch } from 'v
 import useIndexedDB from '@/hooks/IndexDBHook';
 import { audioService } from '@/services/audioService';
 import { nativeBridge } from '@/services/nativeBridge';
+import { playbackDiagnostics } from '@/services/playbackDiagnostics';
 import type { usePlayerStore } from '@/store';
 import type { Artist, ILyricText, SongResult } from '@/types/music';
 import { isElectron } from '@/utils';
@@ -57,13 +58,19 @@ export const initMusicHook = (store: ReturnType<typeof usePlayerStore>) => {
         break;
       case 'interruptionPause':
         // 系统打断只停止当前音频，不清除“用户原本要播放”的意图。
+        playbackDiagnostics.log('command-interruption-pause');
         audioService.pauseForInterruption();
         store.setIsPlay(false);
         break;
       case 'interruptionResume':
         // 重建 WebKit 媒体元素，确保 Now Playing 卡片和远程控制重新注册。
+        playbackDiagnostics.log('command-interruption-resume', {
+          hasSrc: !!audioService.getCurrentSound()?.src,
+          hasTrack: !!store.playMusic?.id
+        });
         if (audioService.getCurrentSound()?.src) {
           const recovered = await audioService.resumeAfterInterruption();
+          playbackDiagnostics.log('command-interruption-resume-result', { recovered });
           store.setIsPlay(recovered);
           if (recovered) store.userPlayIntent = true;
         } else if (store.playMusic?.id) {

@@ -28,6 +28,15 @@
       </template>
     </setting-item>
 
+    <setting-item
+      :title="t('settings.about.playbackDiagnostics')"
+      :description="t('settings.about.diagnosticsDescription')"
+    >
+      <s-btn @click="copyPlaybackDiagnostics">
+        {{ t('settings.about.copyDiagnostics') }}
+      </s-btn>
+    </setting-item>
+
     <setting-item :title="t('settings.about.author')" description="Y" clickable @click="openAuthor">
       <s-btn @click.stop="openAuthor">
         <i class="ri-github-line mr-1"></i>{{ t('settings.about.gotoGithub') }}
@@ -51,6 +60,8 @@
 import { computed, inject, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
+import { nativeBridge } from '@/services/nativeBridge';
+import { playbackDiagnostics } from '@/services/playbackDiagnostics';
 import { useSettingsStore } from '@/store/modules/settings';
 import { isElectron } from '@/utils';
 import { checkUpdate, UpdateResult } from '@/utils/update';
@@ -138,6 +149,11 @@ const checkForUpdates = async (isClick = false) => {
   } finally {
     checking.value = false;
   }
+};
+
+const copyPlaybackDiagnostics = () => {
+  nativeBridge.copyToClipboard(playbackDiagnostics.snapshot());
+  message.success(t('settings.about.diagnosticsCopied'));
 };
 
 const openReleasePage = () => {

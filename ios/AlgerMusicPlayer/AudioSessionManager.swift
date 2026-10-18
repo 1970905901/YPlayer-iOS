@@ -12,6 +12,7 @@ final class AudioSessionManager {
     private var mediaServicesResetObserver: NSObjectProtocol?
     private var recoveryWorkItems = [DispatchWorkItem]()
     private var isInterruptionActive = false
+    private var interruptionBeganAt: Date?
     // setCategory 在 WKWebView 正在播放时可能打断 WebKit 音频并撤销 Now Playing，只能配置一次。
     private var isCategoryConfigured = false
 
@@ -72,8 +73,18 @@ final class AudioSessionManager {
                     self.cancelPausedItemRecovery()
                     return
                 }
-                // 打断仍在进行时不要提前消耗恢复次数；等待 .ended 后再恢复。
-                guard !self.isInterruptionActive else { return }
+                // 某些第三方 App 会占用媒体焦点但不发送 .ended；8 秒后若音频占用已释放则主动恢复。
+                if self.isInterruptionActive {
+                    let elapsed = self.interruptionBeganAt.map { Date().timeIntervalSince($0) } ?? 0
+                    guard elapsed >= 8,
+                          !AVAudioSession.sharedInstance().isOtherAudioPlaying else { return }
+
+                    print("[AudioSessionManager] 未收到打断结束通知，音频占用已释放，主动恢复")
+                    self.isInterruptionActive = false
+                    self.interruptionBeganAt = nil
+                    NowPlayingManager.shared.handleInterruptionEnded(shouldResume: true)
+                    return
+                }
 
                 // 打断前正在播放时优先恢复真实播放，Control Center 才能重新持有 Now Playing 资格。
                 // 混音会话允许在游戏仍在发声时恢复，不因 isOtherAudioPlaying 一直卡住。
@@ -171,6 +182,7 @@ final class AudioSessionManager {
         ) { [weak self] _ in
             print("[AudioSessionManager] 系统音频服务重置，重新配置音频会话")
             self?.isInterruptionActive = false
+            self?.interruptionBeganAt = nil
             self?.isCategoryConfigured = false
             self?.configureAudioSession()
             NowPlayingManager.shared.reassertNowPlayingInfo()
@@ -189,11 +201,13 @@ final class AudioSessionManager {
         case .began:
             print("[AudioSessionManager] 收到音频打断开始，保持控制中心暂停状态")
             isInterruptionActive = true
+            interruptionBeganAt = Date()
             NowPlayingManager.shared.handleInterruptionBegan()
             schedulePausedItemRecovery()
 
         case .ended:
             isInterruptionActive = false
+            interruptionBeganAt = nil
             let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
             let shouldResume = options.contains(.shouldResume)

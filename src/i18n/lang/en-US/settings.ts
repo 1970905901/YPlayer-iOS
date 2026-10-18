@@ -286,6 +286,11 @@ export default {
     authorDesc: 'algerkong Give a star🌟',
     telegram: 'Telegram Group',
     gotoTelegram: 'Open Telegram',
+    playbackDiagnostics: 'Playback Diagnostics',
+    diagnosticsDescription:
+      'Copy recent playback, Control Center, and interruption events for troubleshooting',
+    copyDiagnostics: 'Copy Diagnostics',
+    diagnosticsCopied: 'Diagnostics copied',
     messages: {
       checkError: 'Failed to check for updates, please try again later'
     }

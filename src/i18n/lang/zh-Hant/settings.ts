@@ -277,6 +277,10 @@ export default {
     authorDesc: 'algerkong 點個star🌟呗',
     telegram: 'Telegram 交流群',
     gotoTelegram: '前往 Telegram',
+    playbackDiagnostics: '播放診斷',
+    diagnosticsDescription: '複製最近的播放、控制中心和打斷事件，便於排查問題',
+    copyDiagnostics: '複製診斷日誌',
+    diagnosticsCopied: '診斷日誌已複製',
     messages: {
       checkError: '檢查更新失敗，請稍後重試'
     }

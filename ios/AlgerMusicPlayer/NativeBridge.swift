@@ -50,11 +50,21 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         case "setNativeCacheLimit":
             handleSetNativeCacheLimit(payload: body)
 
+        case "copyToClipboard":
+            handleCopyToClipboard(payload: body)
+
         case "preloadArtwork":
             handlePreloadArtwork(payload: body)
 
         default:
             print("[NativeBridge] 未知操作类型: \(action)")
+        }
+    }
+
+    private func handleCopyToClipboard(payload: [String: Any]) {
+        guard let text = payload["text"] as? String, !text.isEmpty else { return }
+        DispatchQueue.main.async {
+            UIPasteboard.general.string = text
         }
     }
 

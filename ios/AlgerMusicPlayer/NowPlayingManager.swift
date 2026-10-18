@@ -43,7 +43,7 @@ final class NowPlayingManager {
     private var shouldResumeAfterInterruption = false
     private var lastPlaybackIntent = false
     private var automaticResumeAttempts = 0
-    private let maxAutomaticResumeAttempts = 3
+    private let maxAutomaticResumeAttempts = 5
 
     /// 给音频会话恢复逻辑使用；仅表示当前仍有一首需要展示的歌曲。
     var hasActiveNowPlayingItem: Bool {
@@ -258,7 +258,7 @@ final class NowPlayingManager {
             self.isCurrentlyPlaying = false
             self.publishCurrentInfo()
             self.schedulePausedStateReassert()
-            if !self.currentInfo.isEmpty {
+            if self.hasActiveNowPlayingItem {
                 // 区分系统打断与用户暂停：前者保留播放意图，打断结束后才能自动恢复。
                 self.dispatchRemoteCommand(allowAutoResume ? "interruptionPause" : "pause")
             }

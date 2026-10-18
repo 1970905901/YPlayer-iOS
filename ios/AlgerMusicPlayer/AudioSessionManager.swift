@@ -11,6 +11,7 @@ final class AudioSessionManager {
     private var silenceSecondaryObserver: NSObjectProtocol?
     private var mediaServicesResetObserver: NSObjectProtocol?
     private var recoveryWorkItems = [DispatchWorkItem]()
+    private var isInterruptionActive = false
 
     private init() {
         setupObservers()
@@ -59,7 +60,8 @@ final class AudioSessionManager {
             return
         }
 
-        let intervals = [0.5, 1.5, 3.0, 5.0, 8.0, 12.0, 18.0, 25.0, 35.0, 45.0, 60.0]
+        // 首次恢复已由 .ended 立即派发；后续重试给 WKWebView 留出执行窗口，避免重叠命令互相取消。
+        let intervals = [2.0, 4.0, 8.0, 12.0, 18.0, 25.0, 35.0, 45.0, 60.0]
         for delay in intervals {
             let item = DispatchWorkItem { [weak self] in
                 guard let self = self else { return }
@@ -68,6 +70,9 @@ final class AudioSessionManager {
                     self.cancelPausedItemRecovery()
                     return
                 }
+                // 打断仍在进行时不要提前消耗恢复次数；等待 .ended 后再恢复。
+                guard !self.isInterruptionActive else { return }
+
                 // 打断前正在播放时优先恢复真实播放，Control Center 才能重新持有 Now Playing 资格。
                 // 混音会话允许在游戏仍在发声时恢复，不因 isOtherAudioPlaying 一直卡住。
                 if NowPlayingManager.shared.resumeAfterInterruptionIfPossible() {
@@ -143,6 +148,7 @@ final class AudioSessionManager {
             queue: .main
         ) { [weak self] _ in
             print("[AudioSessionManager] 系统音频服务重置，重新配置音频会话")
+            self?.isInterruptionActive = false
             self?.configureAudioSession()
             NowPlayingManager.shared.reassertNowPlayingInfo()
             self?.schedulePausedItemRecovery()
@@ -159,10 +165,12 @@ final class AudioSessionManager {
         switch type {
         case .began:
             print("[AudioSessionManager] 收到音频打断开始，保持控制中心暂停状态")
+            isInterruptionActive = true
             NowPlayingManager.shared.handleInterruptionBegan()
             schedulePausedItemRecovery()
 
         case .ended:
+            isInterruptionActive = false
             let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
             let shouldResume = options.contains(.shouldResume)

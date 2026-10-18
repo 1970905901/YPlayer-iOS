@@ -24,7 +24,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         UIApplication.shared.beginReceivingRemoteControlEvents()
-        AudioSessionManager.shared.reactivateAudioSession()
+        // 刷新 Now Playing 元数据；仅正在播放时才确保音频会话有效。
         NowPlayingManager.shared.reassertNowPlayingInfo()
     }
 
@@ -32,9 +32,12 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneWillEnterForeground(_ scene: UIScene) {
         UIApplication.shared.beginReceivingRemoteControlEvents()
-        AudioSessionManager.shared.reactivateAudioSession()
+        // 刷新 Now Playing 元数据；仅正在播放时才确保音频会话有效。
         NowPlayingManager.shared.reassertNowPlayingInfo()
     }
 
-    func sceneDidEnterBackground(_ scene: UIScene) {}
+    func sceneDidEnterBackground(_ scene: UIScene) {
+        // 进入后台时重申当前状态；若已暂停，只保留元数据，不激活音频会话。
+        NowPlayingManager.shared.reassertNowPlayingInfo()
+    }
 }

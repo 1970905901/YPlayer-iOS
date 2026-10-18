@@ -115,11 +115,13 @@ export const preloadCoverImage = (
   if (!picUrl) return;
 
   try {
+    // UI 预加载使用 500px，原生 Now Playing 预加载使用 1024px，兼顾内存与锁屏清晰度。
     const imageUrl = getImgUrl(picUrl, '500y500');
+    const nativeArtworkUrl = getImgUrl(picUrl, '1024y1024');
     console.log('预加载封面图片:', imageUrl);
 
     // 同步触发 iOS 原生预下载与缓存
-    nativeBridge.preloadArtwork(imageUrl);
+    nativeBridge.preloadArtwork(nativeArtworkUrl);
 
     // 创建一个 Image 对象来预加载图片
     const img = new Image();

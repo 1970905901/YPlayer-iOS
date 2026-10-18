@@ -73,7 +73,7 @@ class NativeBridge {
       artworkUrl: state.artworkUrl || '',
       duration: Math.max(0, state.duration || 0),
       currentTime: Math.max(0, state.currentTime || 0),
-      playbackRate: state.playbackRate || 1.0
+      playbackRate: state.playbackRate ?? 1.0
     });
   }
 
@@ -161,19 +161,18 @@ class NativeBridge {
           playerStore.userPlayIntent = false;
           break;
         case 'togglePlayPause':
-          if (playerStore.play) {
+          // 以真实 audio 元素状态为准，避免控制中心与 playerStore 状态短暂不一致时反向切换。
+          if (audioService.isPlaying()) {
             audioService.pause();
             playerStore.setIsPlay(false);
             playerStore.userPlayIntent = false;
-          } else {
-            if (audioService.getCurrentSound()?.src) {
-              audioService.resume();
-              playerStore.setIsPlay(true);
-              playerStore.userPlayIntent = true;
-            } else if (playerStore.playMusic?.id) {
-              const { playTrack } = await import('@/services/playbackController');
-              await playTrack(playerStore.playMusic, true);
-            }
+          } else if (audioService.getCurrentSound()?.src) {
+            audioService.resume();
+            playerStore.setIsPlay(true);
+            playerStore.userPlayIntent = true;
+          } else if (playerStore.playMusic?.id) {
+            const { playTrack } = await import('@/services/playbackController');
+            await playTrack(playerStore.playMusic, true);
           }
           break;
         case 'nextTrack':

@@ -2,7 +2,7 @@ import Foundation
 import MediaPlayer
 import UIKit
 
-/// 播放信息数据模型 (遵循 write-swift 规范，值类型优先)
+/// 播放信息数据模型（值类型，避免跨线程共享可变状态）
 struct PlaybackStateInfo {
     let isPlaying: Bool
     let title: String
@@ -14,48 +14,58 @@ struct PlaybackStateInfo {
     let playbackRate: Double
 }
 
-/// 负责系统媒体中心 (MPNowPlayingInfoCenter) 及远程控制 (MPRemoteCommandCenter) 的管理
+/// 负责系统媒体中心 (MPNowPlayingInfoCenter) 及远程控制 (MPRemoteCommandCenter) 的管理。
+/// 所有对外状态更新都会收敛到主线程，并以 `currentInfo` 作为唯一状态源，
+/// 避免和 WKWebView 的 Media Session 双写时读取到彼此尚未落定的中间状态。
 final class NowPlayingManager {
     static let shared = NowPlayingManager()
 
-    /// 远端指令派发回调 (通知 WKWebView 中的音乐播放核心)
+    /// 远端指令派发回调（通知 WKWebView 中的音乐播放核心）
     var onCommandReceived: ((String, Double?) -> Void)?
 
-    private var currentArtworkUrl: String?
-    private var cachedArtwork: MPMediaItemArtwork?
     private let imageCache = NSCache<NSString, UIImage>()
+    private var currentArtworkURL: String?
+    private var loadingArtworkURL: String?
+    private var cachedArtwork: MPMediaItemArtwork?
     private var currentInfo = [String: Any]()
-    private var pendingNowPlayingInfo: [String: Any]?
-    private var artworkLoadTimeoutWorkItem: DispatchWorkItem?
-    private var screenScale: CGFloat = 3.0
 
     private var baseArtist: String = ""
     private var baseTitle: String = ""
     private var currentLyric: String = ""
+    private var currentTrackKey: String = ""
+    private var currentPlaybackRate: Double = 1.0
     private var isCurrentlyPlaying: Bool = false
+    private var pausedReassertWorkItem: DispatchWorkItem?
 
     private init() {
-        // 保持近期播放歌曲封面缓存 (30 首)，确保切歌与上下首秒出封面无空白延迟
+        // 保持近期播放歌曲封面缓存（30 首），确保切歌与上下首秒出封面无空白延迟。
         imageCache.countLimit = 30
-        if Thread.isMainThread {
-            self.screenScale = UIScreen.main.scale
-        } else {
-            DispatchQueue.main.async {
-                self.screenScale = UIScreen.main.scale
-            }
-        }
+        imageCache.totalCostLimit = 64 * 1024 * 1024
         setupRemoteCommands()
     }
 
-    /// 设置 MPRemoteCommandCenter 锁屏、控制中心与灵动岛控制命令
+    // MARK: - Threading
+
+    private func onMain(_ block: @escaping () -> Void) {
+        if Thread.isMainThread {
+            block()
+        } else {
+            DispatchQueue.main.async(execute: block)
+        }
+    }
+
+    // MARK: - Remote Commands
+
+    /// 设置锁屏、控制中心与灵动岛控制命令。
     private func setupRemoteCommands() {
         let commandCenter = MPRemoteCommandCenter.shared()
 
-        // 彻底停用快进/快退区间指令 (15s)，杜绝控制中心显示 15s 按钮
+        // 停用 15 秒快进/快退，避免系统以其替代上一首/下一首。
+        // 即使控制隐藏，preferredIntervals 仍保留合法值，避免运行时异常。
         commandCenter.skipForwardCommand.removeTarget(nil)
         commandCenter.skipBackwardCommand.removeTarget(nil)
-        commandCenter.skipForwardCommand.preferredIntervals = []
-        commandCenter.skipBackwardCommand.preferredIntervals = []
+        commandCenter.skipForwardCommand.preferredIntervals = [15]
+        commandCenter.skipBackwardCommand.preferredIntervals = [15]
         commandCenter.skipForwardCommand.isEnabled = false
         commandCenter.skipBackwardCommand.isEnabled = false
 
@@ -64,114 +74,96 @@ final class NowPlayingManager {
         commandCenter.seekForwardCommand.isEnabled = false
         commandCenter.seekBackwardCommand.isEnabled = false
 
-        // 彻底停用 stopCommand 避免与播放/暂停产生语义竞争
+        // stop 会与播放/暂停产生语义竞争，始终由应用显式控制。
         commandCenter.stopCommand.removeTarget(nil)
         commandCenter.stopCommand.isEnabled = false
 
-        // 启用上一首
         commandCenter.previousTrackCommand.removeTarget(nil)
-        commandCenter.previousTrackCommand.isEnabled = true
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
-            self?.dispatchRemoteCommand("previousTrack")
+            guard let self = self, self.onCommandReceived != nil else { return .commandFailed }
+            self.dispatchRemoteCommand("previousTrack")
             return .success
         }
 
-        // 启用下一首
         commandCenter.nextTrackCommand.removeTarget(nil)
-        commandCenter.nextTrackCommand.isEnabled = true
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
-            self?.dispatchRemoteCommand("nextTrack")
+            guard let self = self, self.onCommandReceived != nil else { return .commandFailed }
+            self.dispatchRemoteCommand("nextTrack")
             return .success
         }
 
-        // 启用播放指令 (立即乐观更新 playbackRate 为 1.0，保证控制中心瞬时响应)
         commandCenter.playCommand.removeTarget(nil)
-        commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { [weak self] _ in
-            self?.handleRemotePlay()
+            guard let self = self, self.onCommandReceived != nil else { return .commandFailed }
+            self.onMain { self.handleRemotePlay() }
             return .success
         }
 
-        // 启用暂停指令 (立即乐观更新 playbackRate 为 0.0，保证控制中心瞬时响应)
         commandCenter.pauseCommand.removeTarget(nil)
-        commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.addTarget { [weak self] _ in
-            self?.handleRemotePause()
+            guard let self = self, self.onCommandReceived != nil else { return .commandFailed }
+            self.onMain { self.handleRemotePause() }
             return .success
         }
 
-        // 启用播放/暂停切换指令 (控制中心和耳机按键的单键切换核心指令)
         commandCenter.togglePlayPauseCommand.removeTarget(nil)
-        commandCenter.togglePlayPauseCommand.isEnabled = true
         commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
-            self?.handleRemoteToggle()
+            guard let self = self, self.onCommandReceived != nil else { return .commandFailed }
+            self.onMain { self.handleRemoteToggle() }
             return .success
         }
 
-        // 启用播放进度拖动指令
         commandCenter.changePlaybackPositionCommand.removeTarget(nil)
-        commandCenter.changePlaybackPositionCommand.isEnabled = true
         commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
-            if let positionEvent = event as? MPChangePlaybackPositionCommandEvent {
-                self?.handleRemoteSeek(to: positionEvent.positionTime)
-                return .success
+            guard let self = self,
+                  self.onCommandReceived != nil,
+                  let positionEvent = event as? MPChangePlaybackPositionCommandEvent else {
+                return .commandFailed
             }
-            return .commandFailed
+            self.onMain { self.handleRemoteSeek(to: positionEvent.positionTime) }
+            return .success
         }
 
         enforceRemoteCommands()
     }
 
-    /// 强制校准控制中心按钮状态：彻底禁用 15 秒快进快退，确保上一首/下一首/播放/暂停/切换始终处于可用状态
+    /// 统一校准控制中心按钮状态。
     private func enforceRemoteCommands() {
         let commandCenter = MPRemoteCommandCenter.shared()
+        let hasItem = !currentInfo.isEmpty
 
-        commandCenter.skipForwardCommand.preferredIntervals = []
-        commandCenter.skipBackwardCommand.preferredIntervals = []
+        commandCenter.skipForwardCommand.preferredIntervals = [15]
+        commandCenter.skipBackwardCommand.preferredIntervals = [15]
         commandCenter.skipForwardCommand.isEnabled = false
         commandCenter.skipBackwardCommand.isEnabled = false
         commandCenter.seekForwardCommand.isEnabled = false
         commandCenter.seekBackwardCommand.isEnabled = false
         commandCenter.stopCommand.isEnabled = false
 
-        commandCenter.previousTrackCommand.isEnabled = true
-        commandCenter.nextTrackCommand.isEnabled = true
-        commandCenter.playCommand.isEnabled = true
-        commandCenter.pauseCommand.isEnabled = true
-        commandCenter.togglePlayPauseCommand.isEnabled = true
-        commandCenter.changePlaybackPositionCommand.isEnabled = true
+        commandCenter.previousTrackCommand.isEnabled = hasItem
+        commandCenter.nextTrackCommand.isEnabled = hasItem
+        commandCenter.playCommand.isEnabled = hasItem
+        commandCenter.pauseCommand.isEnabled = hasItem
+        commandCenter.togglePlayPauseCommand.isEnabled = hasItem
+        commandCenter.changePlaybackPositionCommand.isEnabled = hasItem
     }
 
     private func handleRemotePlay() {
-        AudioSessionManager.shared.reactivateAudioSession()
+        pausedReassertWorkItem?.cancel()
+        pausedReassertWorkItem = nil
+        let wasPlaying = isCurrentlyPlaying
         isCurrentlyPlaying = true
-        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? currentInfo
-        info[MPNowPlayingInfoPropertyPlaybackRate] = 1.0
-        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
-        info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
-        info[MPNowPlayingInfoPropertyIsLiveStream] = false
-        if let cached = cachedArtwork {
-            info[MPMediaItemPropertyArtwork] = cached
+        if !wasPlaying {
+            AudioSessionManager.shared.reactivateAudioSession()
         }
-        currentInfo = info
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-        MPNowPlayingInfoCenter.default().playbackState = .playing
+        publishCurrentInfo()
         dispatchRemoteCommand("play")
     }
 
     private func handleRemotePause() {
         isCurrentlyPlaying = false
-        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? currentInfo
-        info[MPNowPlayingInfoPropertyPlaybackRate] = 0.0
-        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
-        info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
-        info[MPNowPlayingInfoPropertyIsLiveStream] = false
-        if let cached = cachedArtwork {
-            info[MPMediaItemPropertyArtwork] = cached
-        }
-        currentInfo = info
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-        MPNowPlayingInfoCenter.default().playbackState = .paused
+        publishCurrentInfo()
+        schedulePausedStateReassert()
         dispatchRemoteCommand("pause")
     }
 
@@ -184,243 +176,266 @@ final class NowPlayingManager {
     }
 
     private func handleRemoteSeek(to position: Double) {
-        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? currentInfo
-        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = position
-        if let cached = cachedArtwork {
-            info[MPMediaItemPropertyArtwork] = cached
+        guard position.isFinite else { return }
+        var target = max(0, position)
+        if let duration = currentInfo[MPMediaItemPropertyPlaybackDuration] as? Double, duration > 0 {
+            target = min(target, duration)
         }
-        currentInfo = info
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-        dispatchRemoteCommand("changePlaybackPosition", arg: position)
+        currentInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = target
+        publishCurrentInfo()
+        dispatchRemoteCommand("changePlaybackPosition", arg: target)
     }
 
-    /// 当被其他应用或系统打断播放时调用：保持控制中心存在，展示暂停状态
+    /// 当被其他应用或系统打断播放时调用：暂停并保持控制中心中的歌曲信息。
     func handleInterruptionBegan() {
-        print("[NowPlayingManager] 处理音频打断开始，更新控制中心为暂停状态")
-        isCurrentlyPlaying = false
-        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? currentInfo
-        info[MPNowPlayingInfoPropertyPlaybackRate] = 0.0
-        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
-        info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
-        info[MPNowPlayingInfoPropertyIsLiveStream] = false
-        if let cached = cachedArtwork {
-            info[MPMediaItemPropertyArtwork] = cached
-        }
-        currentInfo = info
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-        MPNowPlayingInfoCenter.default().playbackState = .paused
-        enforceRemoteCommands()
-        dispatchRemoteCommand("pause")
-    }
-
-    /// 当音频打断结束时调用：维持控制中心暂停状态与元数据，支持用户点击继续播放
-    func handleInterruptionEnded(shouldResume: Bool) {
-        print("[NowPlayingManager] 处理音频打断结束，维持控制中心信息，保持暂停状态，shouldResume: \(shouldResume)")
-        isCurrentlyPlaying = false
-        enforceRemoteCommands()
-        var info = currentInfo
-        info[MPNowPlayingInfoPropertyPlaybackRate] = 0.0
-        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
-        info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
-        info[MPNowPlayingInfoPropertyIsLiveStream] = false
-        if let cached = cachedArtwork {
-            info[MPMediaItemPropertyArtwork] = cached
-        }
-        currentInfo = info
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-        MPNowPlayingInfoCenter.default().playbackState = .paused
-    }
-
-    /// 确保当前歌曲元数据与控制中心同步（音频服务重置或应用激活时使用）
-    func reassertNowPlayingInfo() {
-        guard !currentInfo.isEmpty else { return }
-        DispatchQueue.main.async { [weak self] in
+        onMain { [weak self] in
             guard let self = self else { return }
-            self.enforceRemoteCommands()
-            var info = self.currentInfo
-            info[MPNowPlayingInfoPropertyPlaybackRate] = self.isCurrentlyPlaying ? 1.0 : 0.0
-            info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
-            info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
-            info[MPNowPlayingInfoPropertyIsLiveStream] = false
-            if let cached = self.cachedArtwork {
-                info[MPMediaItemPropertyArtwork] = cached
+            self.isCurrentlyPlaying = false
+            self.publishCurrentInfo()
+            self.schedulePausedStateReassert()
+            if !self.currentInfo.isEmpty {
+                // pause 是幂等操作；即使原生状态短暂滞后，也确保真正的 Web 音频停止。
+                self.dispatchRemoteCommand("pause")
             }
-            self.currentInfo = info
-            MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-            MPNowPlayingInfoCenter.default().playbackState = self.isCurrentlyPlaying ? .playing : .paused
         }
     }
 
-    /// 向前端分发远程事件
+    /// 音频打断结束时维持暂停状态，等待用户明确操作后再恢复，避免打断结束后抢占其他 App 的音频焦点。
+    func handleInterruptionEnded(shouldResume: Bool) {
+        onMain { [weak self] in
+            guard let self = self else { return }
+            self.isCurrentlyPlaying = false
+            self.publishCurrentInfo()
+            self.schedulePausedStateReassert()
+            print("[NowPlayingManager] 音频打断结束，保持控制中心暂停状态（系统建议恢复: \(shouldResume)）")
+        }
+    }
+
+    /// 重新发布当前状态（音频服务重置、应用回到前台时使用）。仅在正在播放时确保会话有效。
+    func reassertNowPlayingInfo() {
+        onMain { [weak self] in
+            guard let self = self, !self.currentInfo.isEmpty else { return }
+            if self.isCurrentlyPlaying {
+                AudioSessionManager.shared.reactivateAudioSession()
+            }
+            self.enforceRemoteCommands()
+            self.publishCurrentInfo()
+        }
+    }
+
+    /// 向前端分发远程事件。
     func dispatchRemoteCommand(_ command: String, arg: Double? = nil) {
-        DispatchQueue.main.async { [weak self] in
+        onMain { [weak self] in
             self?.onCommandReceived?(command, arg)
         }
     }
 
-    /// 更新锁屏、控制中心与灵动岛实时单句歌词及同步播放进度
-    func updateLyric(text: String, currentTime: Double? = nil, duration: Double? = nil) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        currentLyric = trimmed
+    // MARK: - Now Playing State
 
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-
-            // 若当前正在等待封面加载，仅更新暂存字典，绝不提前向系统推送无封面元数据
-            if var pending = self.pendingNowPlayingInfo {
-                pending[MPMediaItemPropertyArtist] = trimmed
-                if let currentTime = currentTime, currentTime >= 0 {
-                    pending[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
-                }
-                if let duration = duration, duration > 0 {
-                    pending[MPMediaItemPropertyPlaybackDuration] = duration
-                }
-                self.pendingNowPlayingInfo = pending
-                return
-            }
-
-            var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? self.currentInfo
-            if !self.baseTitle.isEmpty {
-                let combinedTitle = self.baseArtist.isEmpty ? self.baseTitle : "\(self.baseTitle) - \(self.baseArtist)"
-                info[MPMediaItemPropertyTitle] = combinedTitle
-            }
-            info[MPMediaItemPropertyArtist] = trimmed
-            info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
-            info[MPNowPlayingInfoPropertyIsLiveStream] = false
-            if let currentTime = currentTime, currentTime >= 0 {
-                info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
-            }
-            if let duration = duration, duration > 0 {
-                info[MPMediaItemPropertyPlaybackDuration] = duration
-            }
-            info[MPNowPlayingInfoPropertyPlaybackRate] = self.isCurrentlyPlaying ? 1.0 : 0.0
-            info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
-            if let cached = self.cachedArtwork {
-                info[MPMediaItemPropertyArtwork] = cached
-            }
-            self.currentInfo = info
-            MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-            MPNowPlayingInfoCenter.default().playbackState = self.isCurrentlyPlaying ? .playing : .paused
+    /// 更新锁屏、控制中心及灵动岛的播放信息。
+    func updateNowPlaying(info: PlaybackStateInfo) {
+        onMain { [weak self] in
+            self?.applyNowPlaying(info)
         }
     }
 
-    /// 更新锁屏及控制中心播放信息
-    func updateNowPlaying(info: PlaybackStateInfo) {
-        AudioSessionManager.shared.reactivateAudioSession()
-        baseArtist = info.artist
-        baseTitle = info.title
-        currentLyric = ""
+    private func applyNowPlaying(_ info: PlaybackStateInfo) {
+        let title = normalizedText(info.title, fallback: "未知曲目")
+        let artist = normalizedText(info.artist, fallback: "")
+        let album = normalizedText(info.album, fallback: "")
+        let artworkURL = sanitizeArtworkUrl(info.artworkUrl)
+
+        let duration = info.duration.isFinite && info.duration > 0 ? info.duration : 0
+        var elapsed = info.currentTime.isFinite ? max(0, info.currentTime) : 0
+        if duration > 0 {
+            elapsed = min(elapsed, duration)
+        }
+
+        let rate = info.playbackRate.isFinite && info.playbackRate > 0 ? info.playbackRate : 1.0
+        let wasPlaying = isCurrentlyPlaying
+        currentPlaybackRate = rate
         isCurrentlyPlaying = info.isPlaying
 
-        enforceRemoteCommands()
-
-        var nowPlayingInfo = [String: Any]()
-
-        // 将歌手名放置在歌曲名后面（同字号、同粗细、同颜色显示在标题行）
-        let combinedTitle = info.artist.isEmpty ? info.title : "\(info.title) - \(info.artist)"
-        nowPlayingInfo[MPMediaItemPropertyTitle] = combinedTitle
-
-        // 副标题展示：若当前有歌词则展示歌词，否则展示歌手名（或空格防空），确保 MediaPlayer 元数据完整不被系统置灰
-        let displayArtist = currentLyric.isEmpty ? (info.artist.isEmpty ? " " : info.artist) : currentLyric
-        nowPlayingInfo[MPMediaItemPropertyArtist] = displayArtist
-
-        nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = info.album
-        if info.duration > 0 {
-            nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = info.duration
-        }
-        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = max(0, info.currentTime)
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = info.isPlaying ? (info.playbackRate > 0 ? info.playbackRate : 1.0) : 0.0
-        nowPlayingInfo[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
-
-        // 显式声明媒体类型为 Audio 并声明非直播流，激活 iOS 16/17/18 灵动岛 (Dynamic Island) 实时活动与波形动画
-        nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
-        nowPlayingInfo[MPNowPlayingInfoPropertyIsLiveStream] = false
-
-        // 规范化封面 URL (转 https，替换 1024/800 为标准 500y500)
-        let cleanArtworkUrl = sanitizeArtworkUrl(info.artworkUrl)
-
-        // Case 1: 歌曲没有封面
-        if cleanArtworkUrl.isEmpty {
-            artworkLoadTimeoutWorkItem?.cancel()
-            artworkLoadTimeoutWorkItem = nil
-            pendingNowPlayingInfo = nil
-            self.currentInfo = nowPlayingInfo
-            MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
-            MPNowPlayingInfoCenter.default().playbackState = info.isPlaying ? .playing : .paused
-            return
+        let trackKey = [title, artist, album, artworkURL].joined(separator: "\u{1F}")
+        let trackChanged = trackKey != currentTrackKey
+        if trackChanged {
+            currentLyric = ""
+            currentTrackKey = trackKey
         }
 
-        // Case 2: 正在等待这首歌曲的封面异步下载中
-        if pendingNowPlayingInfo != nil, cleanArtworkUrl == currentArtworkUrl {
-            // 只更新 pendingNowPlayingInfo 中的最新播放进度和状态，坚决不向系统泄露无封面元数据
-            self.pendingNowPlayingInfo = nowPlayingInfo
-            return
+        baseTitle = title
+        baseArtist = artist
+
+        // 仅在播放状态从暂停切换为播放时激活会话；暂停、缓冲和重复进度更新都不抢占其他 App。
+        if info.isPlaying && !wasPlaying {
+            AudioSessionManager.shared.reactivateAudioSession()
         }
 
-        // Case 3: 同一首歌曲且封面已有缓存
-        if cleanArtworkUrl == currentArtworkUrl, let cached = cachedArtwork {
-            artworkLoadTimeoutWorkItem?.cancel()
-            artworkLoadTimeoutWorkItem = nil
-            pendingNowPlayingInfo = nil
-            nowPlayingInfo[MPMediaItemPropertyArtwork] = cached
-            self.currentInfo = nowPlayingInfo
-            MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
-            MPNowPlayingInfoCenter.default().playbackState = info.isPlaying ? .playing : .paused
-            return
+        updateArtworkState(for: artworkURL)
+
+        let combinedTitle = artist.isEmpty ? title : "\(title) - \(artist)"
+        let displayArtist = currentLyric.isEmpty ? (artist.isEmpty ? " " : artist) : currentLyric
+
+        var nowPlayingInfo: [String: Any] = [
+            MPMediaItemPropertyTitle: combinedTitle,
+            MPMediaItemPropertyArtist: displayArtist,
+            MPMediaItemPropertyAlbumTitle: album,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: elapsed,
+            MPNowPlayingInfoPropertyPlaybackRate: info.isPlaying ? currentPlaybackRate : 0.0,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
+            MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
+            MPNowPlayingInfoPropertyIsLiveStream: false
+        ]
+
+        if duration > 0 {
+            nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration
         }
-
-        // Case 4: 新歌曲或封面 URL 改变
-        currentArtworkUrl = cleanArtworkUrl
-        cachedArtwork = nil
-
-        // 检查内存图片缓存
-        if let cachedImage = imageCache.object(forKey: cleanArtworkUrl as NSString) {
-            artworkLoadTimeoutWorkItem?.cancel()
-            artworkLoadTimeoutWorkItem = nil
-            pendingNowPlayingInfo = nil
-            let artwork = createArtwork(from: cachedImage)
-            cachedArtwork = artwork
+        if let artwork = cachedArtwork {
             nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
-            self.currentInfo = nowPlayingInfo
-            MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
-            MPNowPlayingInfoCenter.default().playbackState = info.isPlaying ? .playing : .paused
-            return
         }
 
-        // Case 5: 新歌曲且未缓存封面 -> 绝对原子等待
-        // 暂存 pendingNowPlayingInfo，坚决不在封面就绪前向系统推送无封面元数据！
-        artworkLoadTimeoutWorkItem?.cancel()
-        self.pendingNowPlayingInfo = nowPlayingInfo
+        currentInfo = nowPlayingInfo
+        enforceRemoteCommands()
+        publishCurrentInfo()
 
-        // 设置 1.2 秒保底超时：若极端网络超时/离线，则保底推送无封面元数据，确保播放控制手势可用
-        let timeoutWorkItem = DispatchWorkItem { [weak self] in
-            guard let self = self, let pending = self.pendingNowPlayingInfo else { return }
-            print("[NowPlayingManager] 封面下载超时，保底推送播放信息")
-            self.pendingNowPlayingInfo = nil
-            self.currentInfo = pending
-            MPNowPlayingInfoCenter.default().nowPlayingInfo = pending
-            MPNowPlayingInfoCenter.default().playbackState = self.isCurrentlyPlaying ? .playing : .paused
+        if info.isPlaying {
+            pausedReassertWorkItem?.cancel()
+            pausedReassertWorkItem = nil
+        } else {
+            schedulePausedStateReassert()
         }
-        self.artworkLoadTimeoutWorkItem = timeoutWorkItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: timeoutWorkItem)
-
-        // 启动异步下载
-        loadArtwork(from: cleanArtworkUrl, isPreload: false)
     }
 
-    /// 规范化封面图片 URL
+    /// 更新控制中心副标题中的实时歌词，并同步最新播放进度。
+    func updateLyric(text: String, currentTime: Double? = nil, duration: Double? = nil) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        onMain { [weak self] in
+            guard let self = self, !self.currentInfo.isEmpty else { return }
+            self.currentLyric = trimmed
+
+            var info = self.currentInfo
+            if !self.baseTitle.isEmpty {
+                let combinedTitle = self.baseArtist.isEmpty
+                    ? self.baseTitle
+                    : "\(self.baseTitle) - \(self.baseArtist)"
+                info[MPMediaItemPropertyTitle] = combinedTitle
+            }
+            info[MPMediaItemPropertyArtist] = trimmed.isEmpty
+                ? (self.baseArtist.isEmpty ? " " : self.baseArtist)
+                : trimmed
+
+            if let currentTime = currentTime, currentTime.isFinite, currentTime >= 0 {
+                var elapsed = currentTime
+                if let total = info[MPMediaItemPropertyPlaybackDuration] as? Double, total > 0 {
+                    elapsed = min(elapsed, total)
+                }
+                info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsed
+            }
+            if let duration = duration, duration.isFinite, duration > 0 {
+                info[MPMediaItemPropertyPlaybackDuration] = duration
+            }
+
+            self.currentInfo = info
+            self.publishCurrentInfo()
+        }
+    }
+
+    /// WebKit 可能在暂停后短暂清空 Now Playing；延迟一次重申即可，绝不轮询或抢占音频会话。
+    private func schedulePausedStateReassert() {
+        pausedReassertWorkItem?.cancel()
+        guard !isCurrentlyPlaying, !currentInfo.isEmpty else { return }
+
+        let item = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.pausedReassertWorkItem = nil
+            guard !self.isCurrentlyPlaying, !self.currentInfo.isEmpty else { return }
+            self.performPublish()
+        }
+        pausedReassertWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: item)
+    }
+
+    /// 将当前状态真正写入系统媒体中心。输入字典与状态字段均已在主线程准备好。
+    private func publishCurrentInfo() {
+        if Thread.isMainThread {
+            performPublish()
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.performPublish()
+            }
+        }
+    }
+
+    private func performPublish() {
+        guard !currentInfo.isEmpty else { return }
+
+        var info = currentInfo
+        info[MPNowPlayingInfoPropertyPlaybackRate] = isCurrentlyPlaying
+            ? max(0.1, currentPlaybackRate)
+            : 0.0
+        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
+        info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+        info[MPNowPlayingInfoPropertyIsLiveStream] = false
+
+        if let artwork = cachedArtwork {
+            info[MPMediaItemPropertyArtwork] = artwork
+        } else {
+            info.removeValue(forKey: MPMediaItemPropertyArtwork)
+        }
+
+        currentInfo = info
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        MPNowPlayingInfoCenter.default().playbackState = isCurrentlyPlaying ? .playing : .paused
+    }
+
+    private func normalizedText(_ value: String, fallback: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
+    }
+
+    // MARK: - Artwork
+
+    private func updateArtworkState(for artworkURL: String) {
+        if artworkURL.isEmpty {
+            currentArtworkURL = nil
+            loadingArtworkURL = nil
+            cachedArtwork = nil
+            return
+        }
+
+        if artworkURL == currentArtworkURL {
+            if cachedArtwork == nil, loadingArtworkURL != artworkURL {
+                loadArtwork(from: artworkURL, isPreload: false)
+            }
+            return
+        }
+
+        currentArtworkURL = artworkURL
+        loadingArtworkURL = nil
+        cachedArtwork = nil
+
+        if let image = imageCache.object(forKey: artworkURL as NSString) {
+            cachedArtwork = createArtwork(from: image)
+        } else {
+            loadArtwork(from: artworkURL, isPreload: false)
+        }
+    }
+
+    /// 规范化封面 URL。保留原始清晰度，仅对网易云封面做 HTTPS 升级。
     private func sanitizeArtworkUrl(_ urlString: String) -> String {
         var clean = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
-        if clean.lowercased().hasPrefix("http://") {
+        guard !clean.isEmpty else { return "" }
+
+        if clean.lowercased().hasPrefix("http://"),
+           let host = URL(string: clean)?.host?.lowercased(),
+           host.contains("163.com") || host.contains("126.net") {
             clean = "https://" + clean.dropFirst(7)
         }
-        clean = clean.replacingOccurrences(of: "param=1024y1024", with: "param=500y500")
-        clean = clean.replacingOccurrences(of: "param=800y800", with: "param=500y500")
         return clean
     }
 
-    /// 预加载下一首歌曲封面至原生内存缓存，确保切歌瞬间封面 0 延迟秒现
+    /// 预加载下一首歌曲封面至原生内存缓存，确保切歌瞬间封面秒现。
     func preloadArtwork(from urlString: String) {
         let clean = sanitizeArtworkUrl(urlString)
         guard !clean.isEmpty else { return }
@@ -430,144 +445,208 @@ final class NowPlayingManager {
         loadArtwork(from: clean, isPreload: true)
     }
 
-    /// 构造具备动态尺寸适配与无损高清渲染能力的 MPMediaItemArtwork
+    /// 构造按系统请求尺寸等比适配的 MPMediaItemArtwork。
     private func createArtwork(from image: UIImage) -> MPMediaItemArtwork {
-        return MPMediaItemArtwork(boundsSize: image.size) { requestedSize in
-            guard requestedSize.width > 0 && requestedSize.height > 0 else {
+        MPMediaItemArtwork(boundsSize: image.size) { requestedSize in
+            guard requestedSize.width > 0, requestedSize.height > 0 else {
                 return image
             }
-            if abs(requestedSize.width - image.size.width) < 1 && abs(requestedSize.height - image.size.height) < 1 {
+            if abs(requestedSize.width - image.size.width) < 1,
+               abs(requestedSize.height - image.size.height) < 1 {
                 return image
             }
-            let renderer = UIGraphicsImageRenderer(size: requestedSize)
+
+            let format = UIGraphicsImageRendererFormat.preferred()
+            format.opaque = false
+            let renderer = UIGraphicsImageRenderer(size: requestedSize, format: format)
             return renderer.image { _ in
-                image.draw(in: CGRect(origin: .zero, size: requestedSize))
+                let scale = min(
+                    requestedSize.width / max(1, image.size.width),
+                    requestedSize.height / max(1, image.size.height)
+                )
+                let drawSize = CGSize(
+                    width: image.size.width * scale,
+                    height: image.size.height * scale
+                )
+                let drawRect = CGRect(
+                    x: (requestedSize.width - drawSize.width) / 2,
+                    y: (requestedSize.height - drawSize.height) / 2,
+                    width: drawSize.width,
+                    height: drawSize.height
+                )
+                image.draw(in: drawRect)
             }
         }
     }
 
-    /// 异步请求专辑封面图片并生成 MPMediaItemArtwork
+    /// 异步请求专辑封面图片。网络失败时按 800 / 500 逐级回退，但不会无限重试。
     private func loadArtwork(from urlString: String, isPreload: Bool = false) {
-        let cleanUrlString = sanitizeArtworkUrl(urlString)
+        let cleanURL = sanitizeArtworkUrl(urlString)
+        guard !cleanURL.isEmpty else { return }
+
         if !isPreload {
-            currentArtworkUrl = cleanUrlString
+            currentArtworkURL = cleanURL
         }
 
-        // 检查内存缓存
-        if let cachedImage = imageCache.object(forKey: cleanUrlString as NSString) {
+        if let cachedImage = imageCache.object(forKey: cleanURL as NSString) {
             if !isPreload {
-                applyArtwork(cachedImage, for: cleanUrlString)
+                applyArtwork(cachedImage, for: cleanURL)
             }
             return
         }
 
-        // 1. 支持 base64 Data URL (本地导入或插件音乐封面)
-        if cleanUrlString.hasPrefix("data:image/") {
-            if let commaIndex = cleanUrlString.firstIndex(of: ",") {
-                let base64String = String(cleanUrlString[cleanUrlString.index(after: commaIndex)...])
-                if let data = Data(base64Encoded: base64String, options: .ignoreUnknownCharacters),
-                   let image = UIImage(data: data) {
-                    imageCache.setObject(image, forKey: cleanUrlString as NSString)
-                    if !isPreload {
-                        applyArtwork(image, for: cleanUrlString)
-                    }
-                    return
-                }
-            }
-        }
-
-        // 2. 支持本地文件路径
-        if cleanUrlString.hasPrefix("file://"), let fileUrl = URL(string: cleanUrlString) {
-            if let image = UIImage(contentsOfFile: fileUrl.path) {
-                imageCache.setObject(image, forKey: cleanUrlString as NSString)
+        if cleanURL.hasPrefix("data:image/"),
+           let commaIndex = cleanURL.firstIndex(of: ",") {
+            let base64String = String(cleanURL[cleanURL.index(after: commaIndex)...])
+            if let data = Data(base64Encoded: base64String, options: .ignoreUnknownCharacters),
+               let image = UIImage(data: data) {
+                imageCache.setObject(image, forKey: cleanURL as NSString, cost: imageCacheCost(image))
                 if !isPreload {
-                    applyArtwork(image, for: cleanUrlString)
-                }
-                return
-            }
-        } else if cleanUrlString.hasPrefix("/") && FileManager.default.fileExists(atPath: cleanUrlString) {
-            if let image = UIImage(contentsOfFile: cleanUrlString) {
-                imageCache.setObject(image, forKey: cleanUrlString as NSString)
-                if !isPreload {
-                    applyArtwork(image, for: cleanUrlString)
+                    applyArtwork(image, for: cleanURL)
                 }
                 return
             }
         }
 
-        // 3. 网络请求
-        guard let url = URL(string: cleanUrlString) ?? URL(string: cleanUrlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "") else {
-            print("[NowPlayingManager] 封面 URL 解析失败: \(urlString)")
+        if cleanURL.hasPrefix("file://"), let fileURL = URL(string: cleanURL),
+           let image = UIImage(contentsOfFile: fileURL.path) {
+            imageCache.setObject(image, forKey: cleanURL as NSString, cost: imageCacheCost(image))
+            if !isPreload {
+                applyArtwork(image, for: cleanURL)
+            }
+            return
+        }
+
+        if cleanURL.hasPrefix("/"), FileManager.default.fileExists(atPath: cleanURL),
+           let image = UIImage(contentsOfFile: cleanURL) {
+            imageCache.setObject(image, forKey: cleanURL as NSString, cost: imageCacheCost(image))
+            if !isPreload {
+                applyArtwork(image, for: cleanURL)
+            }
+            return
+        }
+
+        if !isPreload {
+            loadingArtworkURL = cleanURL
+        }
+
+        let candidates = artworkURLCandidates(for: cleanURL)
+        fetchArtwork(
+            candidates: candidates,
+            index: 0,
+            cacheKey: cleanURL,
+            isPreload: isPreload
+        )
+    }
+
+    /// 尝试网络封面，失败后逐级降低请求尺寸，最多三次。
+    private func fetchArtwork(
+        candidates: [String],
+        index: Int,
+        cacheKey: String,
+        isPreload: Bool
+    ) {
+        guard index < candidates.count else {
+            if !isPreload {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self, self.loadingArtworkURL == cacheKey else { return }
+                    self.loadingArtworkURL = nil
+                }
+            }
+            print("[NowPlayingManager] 封面加载失败: \(cacheKey)")
+            return
+        }
+
+        let candidate = candidates[index]
+        guard let url = URL(string: candidate)
+            ?? URL(string: candidate.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "") else {
+            fetchArtwork(candidates: candidates, index: index + 1, cacheKey: cacheKey, isPreload: isPreload)
             return
         }
 
         var request = URLRequest(url: url)
         request.cachePolicy = .returnCacheDataElseLoad
-        request.timeoutInterval = 15
-        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
-
-        // 仅网易云域名附带 163.com Referer，避免第三方 CDN (QQ音乐、B站、酷狗等) 报 403/404 防盗链错误
+        request.timeoutInterval = 10
+        request.setValue(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+            forHTTPHeaderField: "User-Agent"
+        )
         if let host = url.host?.lowercased(), host.contains("163.com") || host.contains("126.net") {
             request.setValue("https://music.163.com", forHTTPHeaderField: "Referer")
         }
-
-        // 优先请求标准 JPEG / PNG 格式，确保 UIImage(data:) 100% 成功解码
-        request.setValue("image/jpeg,image/png,image/*;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
+        request.setValue("image/jpeg,image/png,image/webp,image/*;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
 
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             guard let self = self else { return }
-            if let error = error {
-                print("[NowPlayingManager] 封面网络请求失败: \(error.localizedDescription), URL: \(urlString)")
-                return
-            }
-            guard let data = data, let image = UIImage(data: data) else {
-                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-                print("[NowPlayingManager] 封面图片解码失败, 状态码: \(statusCode), 数据长度: \(data?.count ?? 0), URL: \(urlString)")
-                return
-            }
 
-            self.imageCache.setObject(image, forKey: cleanUrlString as NSString)
-
-            DispatchQueue.main.async {
-                if !isPreload || self.currentArtworkUrl == cleanUrlString {
-                    self.applyArtwork(image, for: cleanUrlString)
+            if error == nil,
+               let data = data,
+               let image = UIImage(data: data) {
+                self.imageCache.setObject(image, forKey: cacheKey as NSString, cost: self.imageCacheCost(image))
+                DispatchQueue.main.async {
+                    if !isPreload {
+                        guard self.loadingArtworkURL == cacheKey else { return }
+                        self.loadingArtworkURL = nil
+                        self.applyArtwork(image, for: cacheKey)
+                    } else if self.currentArtworkURL == cacheKey {
+                        self.applyArtwork(image, for: cacheKey)
+                    }
                 }
+                return
             }
+
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            print("[NowPlayingManager] 封面请求失败，状态码: \(statusCode)，URL: \(candidate)")
+            self.fetchArtwork(
+                candidates: candidates,
+                index: index + 1,
+                cacheKey: cacheKey,
+                isPreload: isPreload
+            )
         }.resume()
     }
 
-    /// 应用封面并通知系统媒体中心
+    /// 将封面更新到当前 Now Playing 信息。
     private func applyArtwork(_ image: UIImage, for urlString: String) {
-        guard currentArtworkUrl == urlString else { return }
-
-        artworkLoadTimeoutWorkItem?.cancel()
-        artworkLoadTimeoutWorkItem = nil
-
-        let artwork = createArtwork(from: image)
-        cachedArtwork = artwork
-
-        // 如果存在 pendingNowPlayingInfo，合并封面并向系统首次原子发布完整元数据
-        var info = pendingNowPlayingInfo ?? currentInfo
-        pendingNowPlayingInfo = nil
-
-        info[MPMediaItemPropertyArtwork] = artwork
-        info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
-        info[MPNowPlayingInfoPropertyIsLiveStream] = false
-        info[MPNowPlayingInfoPropertyPlaybackRate] = isCurrentlyPlaying ? 1.0 : 0.0
-        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
-        currentInfo = info
-
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-        MPNowPlayingInfoCenter.default().playbackState = isCurrentlyPlaying ? .playing : .paused
+        onMain { [weak self] in
+            guard let self = self, self.currentArtworkURL == urlString else { return }
+            self.cachedArtwork = self.createArtwork(from: image)
+            self.publishCurrentInfo()
+        }
     }
 
-    /// 清除所有封面图片缓存，响应整软件资源缓存清理或不缓存策略
+    private func artworkURLCandidates(for urlString: String) -> [String] {
+        var candidates = [urlString]
+
+        if urlString.contains("param=1024y1024") {
+            candidates.append(urlString.replacingOccurrences(of: "param=1024y1024", with: "param=800y800"))
+        }
+        if urlString.contains("param=1024y1024") || urlString.contains("param=800y800") {
+            let fallback = urlString
+                .replacingOccurrences(of: "param=1024y1024", with: "param=800y800")
+                .replacingOccurrences(of: "param=800y800", with: "param=500y500")
+            candidates.append(fallback)
+        }
+        if !urlString.contains("param=") {
+            let separator = urlString.contains("?") ? "&" : "?"
+            candidates.append("\(urlString)\(separator)param=800y800")
+        }
+
+        var uniqueCandidates: [String] = []
+        for candidate in candidates where !candidate.isEmpty && !uniqueCandidates.contains(candidate) {
+            uniqueCandidates.append(candidate)
+        }
+        return uniqueCandidates
+    }
+
+    private func imageCacheCost(_ image: UIImage) -> Int {
+        guard let cgImage = image.cgImage else { return 1 }
+        return cgImage.bytesPerRow * cgImage.height
+    }
+
+    /// 清除封面图片网络/内存缓存，但保留当前正在显示的封面，避免控制中心瞬间变空。
     func clearArtworkCache() {
-        artworkLoadTimeoutWorkItem?.cancel()
-        artworkLoadTimeoutWorkItem = nil
-        pendingNowPlayingInfo = nil
         imageCache.removeAllObjects()
-        cachedArtwork = nil
-        currentArtworkUrl = nil
+        loadingArtworkURL = nil
     }
 }

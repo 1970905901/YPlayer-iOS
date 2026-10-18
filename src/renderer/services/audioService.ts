@@ -71,13 +71,16 @@ class AudioService {
 
   private bindAudioEvents() {
     this.audio.addEventListener('play', () => {
-      this.updateMediaSessionState(true);
-      this.emit('play');
+      // 以元素真实状态为准，避免快速切歌时迟到的 play/pause 事件覆盖新状态。
+      const isPlaying = !this.audio.paused && !this.audio.ended;
+      this.updateMediaSessionState(isPlaying);
+      if (isPlaying) this.emit('play');
     });
 
     this.audio.addEventListener('pause', () => {
-      this.updateMediaSessionState(false);
-      this.emit('pause');
+      const isPlaying = !this.audio.paused && !this.audio.ended;
+      this.updateMediaSessionState(isPlaying);
+      if (!isPlaying) this.emit('pause');
     });
 
     this.audio.addEventListener('ended', () => {
@@ -157,23 +160,34 @@ class AudioService {
   }
 
   private currentLyric: string = '';
+  private currentMediaSessionTrackKey: string = '';
+  private nativeTrackKey: string = '';
 
   /**
    * 更新当前单句歌词到系统媒体中心与锁屏
    */
   public updateCurrentLyric(text: string) {
     const trimmed = (text || '').trim();
-    if (!trimmed) return;
     this.currentLyric = trimmed;
 
     try {
-      if ('mediaSession' in navigator && navigator.mediaSession.metadata) {
-        // 歌词单独展示在副标题位置，不添加歌手名（歌手名已合并至标题行，保持同字号、同粗细、同颜色）
+      if (
+        'mediaSession' in navigator &&
+        typeof window.MediaMetadata === 'function' &&
+        navigator.mediaSession.metadata
+      ) {
+        // MediaMetadata 的属性是只读的，必须整体替换才能可靠刷新控制中心副标题。
+        const metadata = navigator.mediaSession.metadata;
         const artists = this.currentTrack?.ar
           ? this.currentTrack.ar.map((a: any) => a.name)
           : (this.currentTrack as any)?.song?.artists?.map((a: any) => a.name);
         const fallbackArtist = artists ? artists.join(' / ') : ' ';
-        navigator.mediaSession.metadata.artist = trimmed || fallbackArtist;
+        navigator.mediaSession.metadata = new window.MediaMetadata({
+          title: metadata.title,
+          artist: trimmed || fallbackArtist,
+          album: metadata.album,
+          artwork: Array.from(metadata.artwork)
+        });
       }
     } catch {
       // ignore
@@ -190,7 +204,11 @@ class AudioService {
 
   private updateMediaSessionMetadata(track: SongResult) {
     try {
-      if (!('mediaSession' in navigator)) return;
+      if (!('mediaSession' in navigator) || typeof window.MediaMetadata !== 'function') {
+        // iOS 14/15 的 WKWebView 可能缺少 Media Session / MediaMetadata，原生控制中心仍需完整元数据。
+        this.syncNativePlayState(!this.audio.paused);
+        return;
+      }
 
       const artists = track.ar
         ? track.ar.map((a) => a.name)
@@ -198,24 +216,31 @@ class AudioService {
       const artistsStr = artists ? artists.join(' / ') : '';
       const album = track.al ? track.al.name : (track as any).song?.album?.name;
 
+      // 切歌时清空上一首歌词，避免新歌首帧沿用旧歌词。
+      const trackKey = `${track.id || ''}|${track.name || ''}|${artistsStr}|${album || ''}`;
+      if (trackKey !== this.currentMediaSessionTrackKey) {
+        this.currentMediaSessionTrackKey = trackKey;
+        this.currentLyric = '';
+      }
+
       // 将歌手名放置在歌曲名后面（同字号、同粗细、同颜色显示在标题行）
       const combinedTitle = artistsStr ? `${track.name || ''} - ${artistsStr}` : track.name || '';
 
-      // 传递高清封面：使用 NetEase 支持最好的精确尺寸梯度，适配 iOS 控制中心小卡片与锁屏全屏超清大图
-      const coverUrl96 = getTrackCoverUrl(track, '96y96');
-      const coverUrl128 = getTrackCoverUrl(track, '128y128');
-      const coverUrl256 = getTrackCoverUrl(track, '256y256');
-      const coverUrl384 = getTrackCoverUrl(track, '384y384');
-      const coverUrl512 = getTrackCoverUrl(track, '512y512');
+      // 高分辨率封面优先，确保锁屏展开与灵动岛使用同一张高清图。
+      const coverUrl1024 = getTrackCoverUrl(track, '1024y1024');
       const coverUrl800 = getTrackCoverUrl(track, '800y800');
+      const coverUrl512 = getTrackCoverUrl(track, '512y512');
+      const coverUrl384 = getTrackCoverUrl(track, '384y384');
+      const coverUrl256 = getTrackCoverUrl(track, '256y256');
+      const coverUrl128 = getTrackCoverUrl(track, '128y128');
 
       const artwork = [
-        { src: coverUrl96, type: 'image/jpeg', sizes: '96x96' },
-        { src: coverUrl128, type: 'image/jpeg', sizes: '128x128' },
-        { src: coverUrl256, type: 'image/jpeg', sizes: '256x256' },
-        { src: coverUrl384, type: 'image/jpeg', sizes: '384x384' },
+        { src: coverUrl1024, type: 'image/jpeg', sizes: '1024x1024' },
+        { src: coverUrl800, type: 'image/jpeg', sizes: '800x800' },
         { src: coverUrl512, type: 'image/jpeg', sizes: '512x512' },
-        { src: coverUrl800, type: 'image/jpeg', sizes: '800x800' }
+        { src: coverUrl384, type: 'image/jpeg', sizes: '384x384' },
+        { src: coverUrl256, type: 'image/jpeg', sizes: '256x256' },
+        { src: coverUrl128, type: 'image/jpeg', sizes: '128x128' }
       ];
 
       navigator.mediaSession.metadata = new window.MediaMetadata({
@@ -256,6 +281,8 @@ class AudioService {
       this.syncNativePlayState(!this.audio.paused);
     } catch (error) {
       console.error('更新媒体会话元数据时出错:', error);
+      // Media Session 异常不能阻断原生控制中心的元数据同步。
+      this.syncNativePlayState(!this.audio.paused);
     }
   }
 
@@ -273,7 +300,7 @@ class AudioService {
         if ('setPositionState' in navigator.mediaSession) {
           navigator.mediaSession.setPositionState({
             duration: this.audio.duration,
-            playbackRate: this.audio.paused ? 0 : this.playbackRate,
+            playbackRate: this.audio.paused ? 0 : this.audio.playbackRate,
             position: this.audio.currentTime
           });
         }
@@ -295,8 +322,8 @@ class AudioService {
       const album = this.currentTrack.al
         ? this.currentTrack.al.name
         : (this.currentTrack as any).song?.album?.name;
-      // 传递 500x500 高清封面，与 iOS MediaPlayer 完美契合，杜绝尺寸超限与加载失败
-      const picUrl = getTrackCoverUrl(this.currentTrack, '500y500');
+      // 与 Media Session 使用同一张 1024px 封面，避免控制中心与锁屏读取到不同清晰度的图片。
+      const picUrl = getTrackCoverUrl(this.currentTrack, '1024y1024');
       if (picUrl && this.currentTrack.id) {
         void resourceCacheService.trackResource(
           `song_cover_${this.currentTrack.id}`,
@@ -315,15 +342,23 @@ class AudioService {
           : trackDurationSec;
 
       const activeIsPlaying = isPlaying !== undefined ? isPlaying : !this.audio.paused;
+      const nativeTrackKey = `${this.currentTrack.id || ''}|${this.currentTrack.name || ''}`;
+      const trackChanged = nativeTrackKey !== this.nativeTrackKey;
+      if (trackChanged) {
+        this.nativeTrackKey = nativeTrackKey;
+      }
+      const nativeCurrentTime =
+        trackChanged || !isFinite(this.audio.currentTime) ? 0 : this.audio.currentTime;
+
       nativeBridge.updatePlayState({
         isPlaying: activeIsPlaying,
         title: this.currentTrack.name || '',
-        artist: artists ? artists.join(', ') : '',
+        artist: artists ? artists.join(' / ') : '',
         album: album || '',
         artworkUrl: picUrl,
         duration: duration > 0 ? duration : 0,
-        currentTime: isFinite(this.audio.currentTime) ? this.audio.currentTime : 0,
-        playbackRate: activeIsPlaying ? this.playbackRate : 0
+        currentTime: nativeCurrentTime,
+        playbackRate: this.playbackRate
       });
     } catch (e) {
       console.warn('[AudioService] syncNativePlayState error:', e);
@@ -571,7 +606,14 @@ class AudioService {
     if (isSameUrl) {
       this.currentTrack = track;
       if (seekTime > 0) this.audio.currentTime = seekTime;
-      if (isPlay) this.audio.play();
+      if (isPlay) {
+        void this.audio.play().catch((error) => {
+          console.error('Audio play failed:', error);
+          this.updateMediaSessionState(false);
+          this.emit('playerror', { track, error });
+          this.emit('pause');
+        });
+      }
       this.updateMediaSessionMetadata(track);
       this.releaseOperationLock();
       return Promise.resolve(this.audio);
@@ -591,8 +633,8 @@ class AudioService {
         this._isLoading = true;
         this.currentTrack = track;
 
-        // 立即向原生端同步待播歌曲信息与封面 URL，在音频缓冲期间提前完成封面下载与缓存
-        this.syncNativePlayState(isPlay);
+        // 先同步歌曲元数据供原生预取封面；实际播放状态由 audio 的 play/pause 事件驱动。
+        this.syncNativePlayState(!this.audio.paused);
 
         // Ensure EQ/AudioContext is set up (only runs once)
         this.setupEQ();
@@ -611,9 +653,11 @@ class AudioService {
           }
 
           if (isPlay) {
-            this.audio.play().catch((err) => {
+            void this.audio.play().catch((err) => {
               console.error('Audio play failed:', err);
+              this.updateMediaSessionState(false);
               this.emit('playerror', { track, error: err });
+              this.emit('pause');
             });
           }
 
@@ -624,7 +668,7 @@ class AudioService {
           this.audio.playbackRate = this.playbackRate;
           this.updateMediaSessionMetadata(track);
           this.updateMediaSessionPositionState();
-          this.syncNativePlayState(isPlay);
+          this.syncNativePlayState(!this.audio.paused);
           this.emit('load');
           this.releaseOperationLock();
           resolve(this.audio);
@@ -635,6 +679,7 @@ class AudioService {
           this._isLoading = false;
           const error = this.audio.error;
           console.error('Audio load error:', error?.code, error?.message);
+          this.syncNativePlayState(false);
           this.emit('loaderror', { track, error });
 
           // MEDIA_ERR_SRC_NOT_SUPPORTED(4)：源本身无效（URL 已失效/返回了
@@ -680,9 +725,15 @@ class AudioService {
   public resume() {
     this.forceResetOperationLock();
     try {
-      this.audio.play();
+      void this.audio.play().catch((error) => {
+        console.error('恢复音频播放失败:', error);
+        this.updateMediaSessionState(false);
+        this.emit('pause');
+      });
     } catch (error) {
       console.error('恢复音频播放失败:', error);
+      this.updateMediaSessionState(false);
+      this.emit('pause');
     }
   }
 
@@ -710,6 +761,9 @@ class AudioService {
       console.error('停止音频失败:', error);
     }
     this.currentTrack = null;
+    this.currentLyric = '';
+    this.currentMediaSessionTrackKey = '';
+    this.nativeTrackKey = '';
     if ('mediaSession' in navigator) {
       navigator.mediaSession.playbackState = 'none';
     }
@@ -722,6 +776,7 @@ class AudioService {
       this.emit('seek_start', targetTime);
       this.audio.currentTime = targetTime;
       this.updateMediaSessionPositionState();
+      this.syncNativePlayState(!this.audio.paused);
       this.emit('seek', targetTime);
     } catch (error) {
       console.error('Seek操作失败:', error);
@@ -747,9 +802,11 @@ class AudioService {
   }
 
   public setPlaybackRate(rate: number) {
-    this.playbackRate = rate;
-    this.audio.playbackRate = rate;
+    const normalizedRate = Math.max(0.25, Math.min(4, rate));
+    this.playbackRate = normalizedRate;
+    this.audio.playbackRate = normalizedRate;
     this.updateMediaSessionPositionState();
+    this.syncNativePlayState(!this.audio.paused);
   }
 
   public getPlaybackRate(): number {
@@ -760,6 +817,10 @@ class AudioService {
 
   getCurrentSound(): HTMLAudioElement | null {
     return this.audio.src ? this.audio : null;
+  }
+
+  isPlaying(): boolean {
+    return !this.audio.paused && !this.audio.ended;
   }
 
   getCurrentTrack(): SongResult | null {

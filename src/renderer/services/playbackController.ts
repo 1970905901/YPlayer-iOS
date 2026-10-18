@@ -198,6 +198,8 @@ export const playTrack = async (
   music.playLoading = true;
   playerCore.playMusic = music;
   updateDocumentTitle(music);
+  // 同时预热 Media Session 各档封面，避免 Control Center 小图晚到后一直空白。
+  audioService.preloadMediaSessionArtwork(music);
 
   // 保存原始歌曲数据
   const originalMusic = { ...music };

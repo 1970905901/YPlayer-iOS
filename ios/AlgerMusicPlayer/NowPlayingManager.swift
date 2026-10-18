@@ -74,7 +74,7 @@ final class NowPlayingManager {
         pausedReassertWorkItem = nil
         AudioSessionManager.shared.reactivateAudioSession()
         print("[NowPlayingManager] 调度打断恢复播放，第 \(automaticResumeAttempts) 次")
-        dispatchRemoteCommand("play")
+        dispatchRemoteCommand("interruptionResume")
         return true
     }
 

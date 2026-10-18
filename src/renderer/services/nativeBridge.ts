@@ -189,6 +189,14 @@ class NativeBridge {
           audioService.pauseForInterruption();
           playerStore.setIsPlay(false);
           break;
+        case 'interruptionResume':
+          if (audioService.getCurrentSound()?.src) {
+            playerStore.setIsPlay(await audioService.resumeAfterInterruption());
+          } else if (playerStore.playMusic?.id) {
+            const { playTrack } = await import('@/services/playbackController');
+            await playTrack(playerStore.playMusic, true);
+          }
+          break;
         case 'togglePlayPause':
           // 以真实 audio 元素状态为准，避免控制中心与 playerStore 状态短暂不一致时反向切换。
           if (audioService.isPlaying()) {

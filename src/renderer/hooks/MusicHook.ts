@@ -60,6 +60,17 @@ export const initMusicHook = (store: ReturnType<typeof usePlayerStore>) => {
         audioService.pauseForInterruption();
         store.setIsPlay(false);
         break;
+      case 'interruptionResume':
+        // 重建 WebKit 媒体元素，确保 Now Playing 卡片和远程控制重新注册。
+        if (audioService.getCurrentSound()?.src) {
+          const recovered = await audioService.resumeAfterInterruption();
+          store.setIsPlay(recovered);
+          if (recovered) store.userPlayIntent = true;
+        } else if (store.playMusic?.id) {
+          const { playTrack } = await import('@/services/playbackController');
+          await playTrack(store.playMusic, true);
+        }
+        break;
       case 'togglePlayPause':
         if (audioService.isPlaying()) {
           audioService.pause();

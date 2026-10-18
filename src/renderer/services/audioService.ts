@@ -175,6 +175,27 @@ class AudioService {
   private currentLyric: string = '';
   private currentMediaSessionTrackKey: string = '';
   private nativeTrackKey: string = '';
+  private preloadedArtworkUrls = new Set<string>();
+
+  /** 提前把 Media Session 会用到的各档封面放入 WebKit 缓存，避免小卡片先出现空白图。 */
+  public preloadMediaSessionArtwork(track: SongResult) {
+    if (!nativeBridge.isIOS || !track) return;
+
+    if (this.preloadedArtworkUrls.size > 120) {
+      this.preloadedArtworkUrls.clear();
+    }
+
+    for (const size of ['96y96', '128y128', '256y256', '384y384', '512y512', '800y800']) {
+      const url = getTrackCoverUrl(track, size);
+      if (!url || this.preloadedArtworkUrls.has(url)) continue;
+      this.preloadedArtworkUrls.add(url);
+
+      const image = new Image();
+      image.decoding = 'async';
+      image.onerror = () => this.preloadedArtworkUrls.delete(url);
+      image.src = url;
+    }
+  }
 
   /**
    * 更新当前单句歌词到系统媒体中心与锁屏
@@ -239,22 +260,30 @@ class AudioService {
       // 将歌手名放置在歌曲名后面（同字号、同粗细、同颜色显示在标题行）
       const combinedTitle = artistsStr ? `${track.name || ''} - ${artistsStr}` : track.name || '';
 
-      // iOS 可能直接使用 artwork 数组的第一项；高清图必须放首位，避免控制中心拿到 96px 缩略图。
+      // iOS 小尺寸 Control Center 卡片会优先读取前项；必须在前面提供真实小图，
+      // 同时保留末尾高清图供展开卡片和锁屏使用。
+      const coverUrl96 = getTrackCoverUrl(track, '96y96');
+      const coverUrl128 = getTrackCoverUrl(track, '128y128');
+      const coverUrl256 = getTrackCoverUrl(track, '256y256');
+      const coverUrl384 = getTrackCoverUrl(track, '384y384');
       const coverUrl512 = getTrackCoverUrl(track, '512y512');
       const coverUrl800 = getTrackCoverUrl(track, '800y800');
-      const coverUrl384 = getTrackCoverUrl(track, '384y384');
-      const coverUrl256 = getTrackCoverUrl(track, '256y256');
-      const coverUrl128 = getTrackCoverUrl(track, '128y128');
-      const coverUrl96 = getTrackCoverUrl(track, '96y96');
 
-      const artwork = [
-        { src: coverUrl512, type: 'image/jpeg', sizes: '512x512' },
-        { src: coverUrl800, type: 'image/jpeg', sizes: '800x800' },
-        { src: coverUrl384, type: 'image/jpeg', sizes: '384x384' },
-        { src: coverUrl256, type: 'image/jpeg', sizes: '256x256' },
+      const standardArtwork = [
+        { src: coverUrl96, type: 'image/jpeg', sizes: '96x96' },
         { src: coverUrl128, type: 'image/jpeg', sizes: '128x128' },
-        { src: coverUrl96, type: 'image/jpeg', sizes: '96x96' }
+        { src: coverUrl256, type: 'image/jpeg', sizes: '256x256' },
+        { src: coverUrl384, type: 'image/jpeg', sizes: '384x384' },
+        { src: coverUrl512, type: 'image/jpeg', sizes: '512x512' },
+        { src: coverUrl800, type: 'image/jpeg', sizes: '800x800' }
       ].filter((item) => !!item.src);
+
+      // iOS 的 Media Session 只稳定使用第一张图。用高清源伪装成小图，
+      // 小卡片会缩放绘制，展开时仍使用同一张高清位图，避免空白或放大后模糊。
+      const artwork =
+        nativeBridge.isIOS && coverUrl512
+          ? [{ src: coverUrl512, type: 'image/jpeg', sizes: '96x96' }]
+          : standardArtwork;
 
       navigator.mediaSession.metadata = new window.MediaMetadata({
         title: combinedTitle,
@@ -738,11 +767,20 @@ class AudioService {
     });
   }
 
-  public async resume(): Promise<boolean> {
+  public resume(): Promise<boolean> {
+    return this.resumeWithStrategy(false);
+  }
+
+  /** 系统打断恢复必须重建媒体元素，才能让 WebKit 重新注册 Now Playing 卡片。 */
+  public resumeAfterInterruption(): Promise<boolean> {
+    return this.resumeWithStrategy(true);
+  }
+
+  private async resumeWithStrategy(forceReload: boolean): Promise<boolean> {
     // 原生打断恢复会多次重试；同一时间只允许一个恢复流程，避免重复 play 互相打断。
     if (this.resumeInFlight) return this.resumeInFlight;
 
-    const resumePromise = this.performResume();
+    const resumePromise = this.performResume(forceReload);
     this.resumeInFlight = resumePromise;
     try {
       return await resumePromise;
@@ -753,7 +791,7 @@ class AudioService {
     }
   }
 
-  private async performResume(): Promise<boolean> {
+  private async performResume(forceReload: boolean): Promise<boolean> {
     this.forceResetOperationLock();
     this.userPlayIntent = true;
 
@@ -763,22 +801,37 @@ class AudioService {
     // 打断后 WebKit 可能已清空 Media Session；播放前先重新建立元数据与远程控制。
     this.refreshMediaSession();
 
-    try {
-      await this.audio.play();
-      if (!this.audio.paused) {
-        this.refreshMediaSession();
-        return true;
+    if (!forceReload) {
+      try {
+        await this.audio.play();
+        if (!this.audio.paused) {
+          this.refreshMediaSession();
+          return true;
+        }
+      } catch (error) {
+        console.warn('[AudioService] 直接恢复播放失败，尝试重建媒体元素:', error);
       }
-    } catch (error) {
-      console.warn('[AudioService] 直接恢复播放失败，尝试重建媒体元素:', error);
     }
 
     const recovered = await this.reloadAndResumeAfterInterruption();
-    if (!recovered) {
-      this.updateMediaSessionState(false);
-      this.emit('pause');
+    if (recovered) return true;
+
+    if (forceReload) {
+      // 重建失败时再给原媒体元素一次直接恢复机会。
+      try {
+        await this.audio.play();
+        if (!this.audio.paused) {
+          this.refreshMediaSession();
+          return true;
+        }
+      } catch (error) {
+        console.warn('[AudioService] 重建后直接恢复仍失败:', error);
+      }
     }
-    return recovered;
+
+    this.updateMediaSessionState(false);
+    this.emit('pause');
+    return false;
   }
 
   /** 打断可能让 HTMLMediaElement 进入无法直接 play 的状态；重设同一 src 重建 WebKit 媒体会话。 */

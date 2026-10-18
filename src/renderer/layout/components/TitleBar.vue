@@ -7,7 +7,7 @@
     <div id="title">YPlayer</div>
     <div id="buttons" class="flex gap-4">
       <n-button
-        v-if="!isElectron"
+        v-if="!isElectron && !nativeBridge.isIOS"
         type="primary"
         size="small"
         text
@@ -122,6 +122,7 @@
 import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
+import { nativeBridge } from '@/services/nativeBridge';
 import { useSettingsStore } from '@/store/modules/settings';
 import { isElectron } from '@/utils';
 

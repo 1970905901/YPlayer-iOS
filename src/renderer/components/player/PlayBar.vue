@@ -351,8 +351,12 @@ const openPlayListDrawer = () => {
 }
 
 .music-play-bar {
-  @apply h-20 w-full absolute bottom-0 left-0 flex items-center box-border px-6 py-2 pt-3;
+  @apply w-full absolute bottom-0 left-0 flex items-center box-border px-6 py-2 pt-3;
   @apply bg-light dark:bg-dark shadow-2xl shadow-gray-300;
+  height: calc(5rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 0.5rem);
+  padding-left: max(env(safe-area-inset-left, 0px), 1.5rem);
+  padding-right: max(env(safe-area-inset-right, 0px), 1.5rem);
   z-index: 9999;
   animation-duration: 0.5s !important;
   /* 空白区域可点击展开详情页（#751） */

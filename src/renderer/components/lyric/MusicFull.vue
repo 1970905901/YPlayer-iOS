@@ -1190,6 +1190,16 @@ defineExpose({
   }
 }
 
+.control-left {
+  top: calc(env(safe-area-inset-top, 0px) + 2rem);
+  left: calc(env(safe-area-inset-left, 0px) + 2rem);
+}
+
+.control-right {
+  top: calc(env(safe-area-inset-top, 0px) + 2rem);
+  right: calc(env(safe-area-inset-right, 0px) + 2rem);
+}
+
 .control-left,
 .control-right {
   &.pure-mode {

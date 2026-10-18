@@ -4,8 +4,8 @@
 
   <!-- PC 端 / 浏览器移动端 / 平板模式 保持原有布局 -->
   <div v-else class="layout-page" :class="{ mobile: settingsStore.isMobile }">
-    <div id="layout-main" class="layout-main">
-      <title-bar />
+    <div id="layout-main" class="layout-main" :class="{ 'safe-area-top': !showTitleBar }">
+      <title-bar v-if="showTitleBar" class="flex-shrink-0" />
       <div class="layout-main-page">
         <!-- 侧边菜单栏 -->
         <app-menu v-if="!settingsStore.isMobile" class="menu" :menus="menuStore.menus" />
@@ -60,6 +60,7 @@ import UpdateModal from '@/components/common/UpdateModal.vue';
 import SleepTimerTop from '@/components/player/SleepTimerTop.vue';
 import homeRouter from '@/router/home';
 import otherRouter from '@/router/other';
+import { nativeBridge } from '@/services/nativeBridge';
 import { useMenuStore } from '@/store/modules/menu';
 import { usePlayerStore } from '@/store/modules/player';
 import { useSettingsStore } from '@/store/modules/settings';
@@ -115,6 +116,23 @@ provide('shouldShowMobileMenu', shouldShowMobileMenu);
 // 使用 settingsStore.isMobile 进行移动端检测而不是 Capacitor 设备检测
 const isPhone = computed(() => settingsStore.isMobile);
 
+// 判断是否显示桌面标题栏：
+// 1. Electron 桌面端始终显示（提供拖拽及窗口最小化/关闭功能）
+// 2. iOS 原生容器（iPhone & iPad）及移动/平板设备不显示桌面标题栏与"下载桌面版"
+// 3. PC 桌面端 Web 浏览器显示原有标题栏
+const showTitleBar = computed(() => {
+  if (isElectron) return true;
+  if (nativeBridge.isIOS) return false;
+  const isTabletOrMobile =
+    settingsStore.isMobile ||
+    /iPad|iPhone|iPod|Android/i.test(navigator.userAgent) ||
+    (typeof navigator !== 'undefined' &&
+      navigator.platform === 'MacIntel' &&
+      navigator.maxTouchPoints > 1);
+  if (isTabletOrMobile) return false;
+  return true;
+});
+
 onMounted(() => {
   settingsStore.initializeSettings();
   settingsStore.initializeTheme();
@@ -147,14 +165,21 @@ provide('openPlaylistDrawer', openPlaylistDrawer);
 <style lang="scss" scoped>
 .layout-page {
   @apply w-screen h-screen overflow-hidden bg-light dark:bg-black;
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  box-sizing: border-box;
 }
 
 .layout-main {
-  @apply w-full h-full relative text-gray-900 dark:text-white;
+  @apply w-full h-full relative flex flex-col text-gray-900 dark:text-white;
+
+  &.safe-area-top {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
+  }
 }
 
 .layout-main-page {
-  @apply flex h-full;
+  @apply flex flex-1 min-h-0;
 }
 
 .menu {

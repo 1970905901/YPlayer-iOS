@@ -226,21 +226,21 @@ class AudioService {
       // 将歌手名放置在歌曲名后面（同字号、同粗细、同颜色显示在标题行）
       const combinedTitle = artistsStr ? `${track.name || ''} - ${artistsStr}` : track.name || '';
 
-      // 高分辨率封面优先，确保锁屏展开与灵动岛使用同一张高清图。
-      const coverUrl1024 = getTrackCoverUrl(track, '1024y1024');
-      const coverUrl800 = getTrackCoverUrl(track, '800y800');
-      const coverUrl512 = getTrackCoverUrl(track, '512y512');
-      const coverUrl384 = getTrackCoverUrl(track, '384y384');
-      const coverUrl256 = getTrackCoverUrl(track, '256y256');
+      // 使用已验证稳定的尺寸梯度，优先保证控制中心与灵动岛能实际显示封面。
+      const coverUrl96 = getTrackCoverUrl(track, '96y96');
       const coverUrl128 = getTrackCoverUrl(track, '128y128');
+      const coverUrl256 = getTrackCoverUrl(track, '256y256');
+      const coverUrl384 = getTrackCoverUrl(track, '384y384');
+      const coverUrl512 = getTrackCoverUrl(track, '512y512');
+      const coverUrl800 = getTrackCoverUrl(track, '800y800');
 
       const artwork = [
-        { src: coverUrl1024, type: 'image/jpeg', sizes: '1024x1024' },
-        { src: coverUrl800, type: 'image/jpeg', sizes: '800x800' },
-        { src: coverUrl512, type: 'image/jpeg', sizes: '512x512' },
-        { src: coverUrl384, type: 'image/jpeg', sizes: '384x384' },
+        { src: coverUrl96, type: 'image/jpeg', sizes: '96x96' },
+        { src: coverUrl128, type: 'image/jpeg', sizes: '128x128' },
         { src: coverUrl256, type: 'image/jpeg', sizes: '256x256' },
-        { src: coverUrl128, type: 'image/jpeg', sizes: '128x128' }
+        { src: coverUrl384, type: 'image/jpeg', sizes: '384x384' },
+        { src: coverUrl512, type: 'image/jpeg', sizes: '512x512' },
+        { src: coverUrl800, type: 'image/jpeg', sizes: '800x800' }
       ];
 
       navigator.mediaSession.metadata = new window.MediaMetadata({
@@ -322,8 +322,8 @@ class AudioService {
       const album = this.currentTrack.al
         ? this.currentTrack.al.name
         : (this.currentTrack as any).song?.album?.name;
-      // 与 Media Session 使用同一张 1024px 封面，避免控制中心与锁屏读取到不同清晰度的图片。
-      const picUrl = getTrackCoverUrl(this.currentTrack, '1024y1024');
+      // 原生控制中心使用 500px 首图，避免大图下载超时导致封面空白。
+      const picUrl = getTrackCoverUrl(this.currentTrack, '500y500');
       if (picUrl && this.currentTrack.id) {
         void resourceCacheService.trackResource(
           `song_cover_${this.currentTrack.id}`,

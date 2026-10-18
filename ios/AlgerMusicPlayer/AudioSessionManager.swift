@@ -10,12 +10,14 @@ final class AudioSessionManager {
     private var routeChangeObserver: NSObjectProtocol?
     private var silenceSecondaryObserver: NSObjectProtocol?
     private var mediaServicesResetObserver: NSObjectProtocol?
+    private var recoveryWorkItems = [DispatchWorkItem]()
 
     private init() {
         setupObservers()
     }
 
     deinit {
+        cancelPausedItemRecovery()
         if let observer = interruptionObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -31,16 +33,56 @@ final class AudioSessionManager {
     }
 
     /// 配置播放类别，但不在启动阶段激活，避免应用一打开就打断其他 App 的音频。
-    func configureAudioSession() {
+    @discardableResult
+    func configureAudioSession() -> Bool {
         applyAudioSession(activate: false)
     }
 
     /// 在用户明确开始播放或从控制中心点击播放时激活音频会话。
-    func reactivateAudioSession() {
+    @discardableResult
+    func reactivateAudioSession() -> Bool {
         applyAudioSession(activate: true)
     }
 
-    private func applyAudioSession(activate: Bool) {
+    /// 取消打断后的暂停卡片恢复，避免用户已经重新播放仍继续恢复。
+    func cancelPausedItemRecovery() {
+        recoveryWorkItems.forEach { $0.cancel() }
+        recoveryWorkItems.removeAll()
+    }
+
+    /// 打断会临时撤销音频会话资格。若当前没有其他音频在播放，
+    /// 在限定时间内恢复会话并重申暂停中的 Now Playing 卡片；不恢复实际音频。
+    func schedulePausedItemRecovery() {
+        cancelPausedItemRecovery()
+        guard NowPlayingManager.shared.hasActiveNowPlayingItem,
+              !NowPlayingManager.shared.isCurrentlyPlayingForAudioSession else {
+            return
+        }
+
+        let intervals = [0.5, 1.5, 3.0, 5.0, 8.0, 12.0, 18.0, 25.0]
+        for delay in intervals {
+            let item = DispatchWorkItem { [weak self] in
+                guard let self = self else { return }
+                guard NowPlayingManager.shared.hasActiveNowPlayingItem,
+                      !NowPlayingManager.shared.isCurrentlyPlayingForAudioSession else {
+                    self.cancelPausedItemRecovery()
+                    return
+                }
+                guard !AVAudioSession.sharedInstance().isOtherAudioPlaying else { return }
+
+                guard self.reactivateAudioSession() else { return }
+                self.cancelPausedItemRecovery()
+                NowPlayingManager.shared.reassertNowPlayingInfo()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    NowPlayingManager.shared.reassertNowPlayingInfo()
+                }
+            }
+            recoveryWorkItems.append(item)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+        }
+    }
+
+    private func applyAudioSession(activate: Bool) -> Bool {
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(
@@ -54,8 +96,10 @@ final class AudioSessionManager {
             } else {
                 print("[AudioSessionManager] 音频会话类别已配置（待播放时激活）")
             }
+            return true
         } catch {
             print("[AudioSessionManager] 配置音频会话失败: \(error.localizedDescription)")
+            return false
         }
     }
 
@@ -93,6 +137,7 @@ final class AudioSessionManager {
             print("[AudioSessionManager] 系统音频服务重置，重新配置音频会话")
             self?.configureAudioSession()
             NowPlayingManager.shared.reassertNowPlayingInfo()
+            self?.schedulePausedItemRecovery()
         }
     }
 
@@ -107,6 +152,7 @@ final class AudioSessionManager {
         case .began:
             print("[AudioSessionManager] 收到音频打断开始，保持控制中心暂停状态")
             NowPlayingManager.shared.handleInterruptionBegan()
+            schedulePausedItemRecovery()
 
         case .ended:
             let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
@@ -114,9 +160,13 @@ final class AudioSessionManager {
             let shouldResume = options.contains(.shouldResume)
             print("[AudioSessionManager] 收到音频打断结束，shouldResume: \(shouldResume)")
 
-            // 不自动重新激活会话或恢复播放，避免来电/通知结束后抢断其他 App。
-            // 用户再次点击播放时，NowPlayingManager 会重新激活会话。
+            // 不自动恢复实际播放，但在没有其他音频时恢复暂停中的控制中心卡片。
             NowPlayingManager.shared.handleInterruptionEnded(shouldResume: shouldResume)
+            if !AVAudioSession.sharedInstance().isOtherAudioPlaying,
+               self.reactivateAudioSession() {
+                NowPlayingManager.shared.reassertNowPlayingInfo()
+            }
+            schedulePausedItemRecovery()
 
         @unknown default:
             break
@@ -134,6 +184,7 @@ final class AudioSessionManager {
         case .oldDeviceUnavailable:
             print("[AudioSessionManager] 旧音频设备断开（耳机拔出/蓝牙断开），自动暂停")
             NowPlayingManager.shared.handleInterruptionBegan()
+            schedulePausedItemRecovery()
         default:
             break
         }
@@ -150,9 +201,11 @@ final class AudioSessionManager {
         case .begin:
             print("[AudioSessionManager] 主音频抢占提示，暂停并保持控制中心信息")
             NowPlayingManager.shared.handleInterruptionBegan()
+            schedulePausedItemRecovery()
         case .end:
             print("[AudioSessionManager] 主音频结束，保持暂停，等待用户明确恢复")
             NowPlayingManager.shared.handleInterruptionEnded(shouldResume: false)
+            schedulePausedItemRecovery()
         @unknown default:
             break
         }

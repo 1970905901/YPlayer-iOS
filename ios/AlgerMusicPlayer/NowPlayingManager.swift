@@ -14,6 +14,8 @@ struct PlaybackStateInfo {
     let playbackRate: Double
     /// 用户是否希望播放。系统打断造成的 pause 不会清除该意图。
     let userPlayIntent: Bool
+    /// WKWebView 是否已提供 Media Session；此时 Now Playing 由 WebKit 单方持有。
+    let mediaSessionAvailable: Bool
 }
 
 /// 负责系统媒体中心 (MPNowPlayingInfoCenter) 及远程控制 (MPRemoteCommandCenter) 的管理。
@@ -43,6 +45,7 @@ final class NowPlayingManager {
     private var shouldResumeAfterInterruption = false
     private var lastPlaybackIntent = false
     private var automaticResumeAttempts = 0
+    private var webMediaSessionAvailable = false
     private let maxAutomaticResumeAttempts = 5
 
     /// 给音频会话恢复逻辑使用；仅表示当前仍有一首需要展示的歌曲。
@@ -294,13 +297,10 @@ final class NowPlayingManager {
     }
 
     /// 重新发布当前状态（音频服务重置、应用回到前台时使用）。
-    /// 只要仍有媒体项就保持混音会话有效，确保暂停卡片也不会被系统立即移除。
+    /// 不在这里反复激活/配置 AVAudioSession，避免打断正在运行的 WKWebView 音频。
     func reassertNowPlayingInfo() {
         onMain { [weak self] in
             guard let self = self, !self.currentInfo.isEmpty else { return }
-            if self.hasActiveNowPlayingItem {
-                AudioSessionManager.shared.reactivateAudioSession()
-            }
             self.enforceRemoteCommands()
             self.publishCurrentInfo()
         }
@@ -338,6 +338,7 @@ final class NowPlayingManager {
         currentPlaybackRate = rate
         isCurrentlyPlaying = info.isPlaying
         lastPlaybackIntent = info.userPlayIntent
+        webMediaSessionAvailable = info.mediaSessionAvailable
 
         let trackKey = [title, artist, album, artworkURL].joined(separator: "\u{1F}")
         let trackChanged = trackKey != currentTrackKey
@@ -349,19 +350,14 @@ final class NowPlayingManager {
         baseTitle = title
         baseArtist = artist
 
-        // 播放和暂停期间都保持混音会话有效，避免刚暂停/刚被打断就从控制中心消失。
+        // 不在每次状态同步时改音频会话：WebKit 正在播放时 setCategory 会打断自身音频。
         if info.isPlaying {
             shouldResumeAfterInterruption = false
             automaticResumeAttempts = 0
-            AudioSessionManager.shared.reactivateAudioSession()
-        } else {
-            if !info.userPlayIntent {
-                // 用户在 App 或控制中心明确暂停时，取消尚未完成的打断恢复。
-                shouldResumeAfterInterruption = false
-                automaticResumeAttempts = 0
-            }
-            // 混音会话在暂停时继续有效，避免刚暂停/刚被打断就从控制中心消失。
-            AudioSessionManager.shared.reactivateAudioSession()
+        } else if !info.userPlayIntent {
+            // 用户在 App 或控制中心明确暂停时，取消尚未完成的打断恢复。
+            shouldResumeAfterInterruption = false
+            automaticResumeAttempts = 0
         }
 
         let combinedTitle = artist.isEmpty ? title : "\(title) - \(artist)"
@@ -500,6 +496,10 @@ final class NowPlayingManager {
         }
 
         currentInfo = info
+
+        // WKWebView 的 Media Session 会覆盖 MPNowPlayingInfoCenter；
+        // 有 Web 会话时只让 WebKit 单方持有 Now Playing，避免双写把卡片清空。
+        guard !webMediaSessionAvailable else { return }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         MPNowPlayingInfoCenter.default().playbackState = isCurrentlyPlaying ? .playing : .paused
     }

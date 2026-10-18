@@ -8,6 +8,8 @@ export interface PlaybackStatePayload {
   isPlaying: boolean;
   /** 用户是否希望播放；系统打断导致的 pause 不会清除该意图。 */
   userPlayIntent?: boolean;
+  /** WKWebView 是否提供 Media Session；原生据此避免与 WebKit 双写 Now Playing。 */
+  mediaSessionAvailable?: boolean;
   title: string;
   artist: string;
   album?: string;
@@ -80,6 +82,7 @@ class NativeBridge {
     this.postMessage('updatePlayState', {
       isPlaying: state.isPlaying,
       userPlayIntent: state.userPlayIntent ?? state.isPlaying,
+      mediaSessionAvailable: state.mediaSessionAvailable ?? false,
       title: state.title || '未知曲目',
       artist: state.artist || '未知艺术家',
       album: state.album || '',

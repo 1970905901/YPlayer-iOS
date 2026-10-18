@@ -1,6 +1,6 @@
 {
   "name": "AlgerMusicPlayer",
-  "version": "5.1.15",
+  "version": "5.1.16",
   "description": "Alger Music Player",
   "author": "Alger <algerkc@qq.com>",
   "main": "./out/main/index.js",

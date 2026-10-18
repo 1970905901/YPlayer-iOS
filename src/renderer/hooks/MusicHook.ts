@@ -516,6 +516,8 @@ const setupAudioListeners = () => {
           updateCurrentTimeAndDuration();
           const curTime = sound.value?.currentTime ?? nowTime.value;
           nowIndex.value = getLrcIndex(curTime);
+          // WebKit 可能在后台清空 Media Session，回前台时重新建立 Control Center 卡片。
+          audioService.refreshMediaSession();
         }
         startProgressInterval();
       }

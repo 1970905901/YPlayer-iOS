@@ -12,6 +12,8 @@ final class AudioSessionManager {
     private var mediaServicesResetObserver: NSObjectProtocol?
     private var recoveryWorkItems = [DispatchWorkItem]()
     private var isInterruptionActive = false
+    // setCategory 在 WKWebView 正在播放时可能打断 WebKit 音频并撤销 Now Playing，只能配置一次。
+    private var isCategoryConfigured = false
 
     private init() {
         setupObservers()
@@ -95,25 +97,45 @@ final class AudioSessionManager {
     }
 
     private func applyAudioSession(activate: Bool) -> Bool {
+        let session = AVAudioSession.sharedInstance()
         do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(
-                .playback,
-                mode: .default,
-                // 游戏、短视频等音频不应把本 App 的独占会话打断；音乐可与其混音。
-                options: [.mixWithOthers, .allowAirPlay, .allowBluetoothA2DP]
-            )
+            try configureCategoryIfNeeded(session)
+
             if activate {
-                try session.setActive(true)
+                // 正常播放时绝不重设分类；仅当系统/WebKit 已把分类改掉时才在播放前恢复。
+                if session.category != .playback {
+                    isCategoryConfigured = false
+                    try configureCategoryIfNeeded(session)
+                }
+                do {
+                    try session.setActive(true)
+                } catch {
+                    // 系统/WebKit 可能重置过分类；只在激活失败时重新配置，避免打断正在播放的 WebKit 音频。
+                    isCategoryConfigured = false
+                    try configureCategoryIfNeeded(session)
+                    try session.setActive(true)
+                }
                 print("[AudioSessionManager] 音频会话已激活")
             } else {
                 print("[AudioSessionManager] 音频会话类别已配置（待播放时激活）")
             }
             return true
         } catch {
+            isCategoryConfigured = false
             print("[AudioSessionManager] 配置音频会话失败: \(error.localizedDescription)")
             return false
         }
+    }
+
+    private func configureCategoryIfNeeded(_ session: AVAudioSession) throws {
+        guard !isCategoryConfigured else { return }
+        try session.setCategory(
+            .playback,
+            mode: .default,
+            // 游戏、短视频等音频不应把本 App 的独占会话打断；音乐可与其混音。
+            options: [.mixWithOthers, .allowAirPlay, .allowBluetoothA2DP]
+        )
+        isCategoryConfigured = true
     }
 
     /// 监听耳机拔出、系统打断、主导音频切换及音频服务重置。
@@ -149,6 +171,7 @@ final class AudioSessionManager {
         ) { [weak self] _ in
             print("[AudioSessionManager] 系统音频服务重置，重新配置音频会话")
             self?.isInterruptionActive = false
+            self?.isCategoryConfigured = false
             self?.configureAudioSession()
             NowPlayingManager.shared.reassertNowPlayingInfo()
             self?.schedulePausedItemRecovery()

@@ -22,6 +22,7 @@ class AudioService {
 
   private operationLock = false;
   private operationLockTimer: ReturnType<typeof setTimeout> | null = null;
+  private resumeInFlight: Promise<boolean> | null = null;
 
   // 当前一次加载（play）挂载在共享 audio 元素上的 canplay/error 监听器的清理函数。
   // 快速切歌时，上一首尚未结算的监听器必须在新一轮加载或 stop() 时移除，
@@ -57,7 +58,7 @@ class AudioService {
     // Bind native DOM events
     this.bindAudioEvents();
 
-    if ('mediaSession' in navigator) {
+    if (this.supportsMediaSession) {
       this.initMediaSession();
     }
 
@@ -126,6 +127,14 @@ class AudioService {
   }
 
   // ==================== MediaSession ====================
+
+  private get supportsMediaSession(): boolean {
+    return (
+      typeof navigator !== 'undefined' &&
+      'mediaSession' in navigator &&
+      typeof window.MediaMetadata === 'function'
+    );
+  }
 
   private initMediaSession() {
     navigator.mediaSession.setActionHandler('play', () => {
@@ -208,7 +217,7 @@ class AudioService {
 
   private updateMediaSessionMetadata(track: SongResult) {
     try {
-      if (!('mediaSession' in navigator) || typeof window.MediaMetadata !== 'function') {
+      if (!this.supportsMediaSession) {
         // iOS 14/15 的 WKWebView 可能缺少 Media Session / MediaMetadata，原生控制中心仍需完整元数据。
         this.syncNativePlayState(!this.audio.paused);
         return;
@@ -230,22 +239,22 @@ class AudioService {
       // 将歌手名放置在歌曲名后面（同字号、同粗细、同颜色显示在标题行）
       const combinedTitle = artistsStr ? `${track.name || ''} - ${artistsStr}` : track.name || '';
 
-      // 使用已验证稳定的尺寸梯度，优先保证控制中心与灵动岛能实际显示封面。
-      const coverUrl96 = getTrackCoverUrl(track, '96y96');
-      const coverUrl128 = getTrackCoverUrl(track, '128y128');
-      const coverUrl256 = getTrackCoverUrl(track, '256y256');
-      const coverUrl384 = getTrackCoverUrl(track, '384y384');
+      // iOS 可能直接使用 artwork 数组的第一项；高清图必须放首位，避免控制中心拿到 96px 缩略图。
       const coverUrl512 = getTrackCoverUrl(track, '512y512');
       const coverUrl800 = getTrackCoverUrl(track, '800y800');
+      const coverUrl384 = getTrackCoverUrl(track, '384y384');
+      const coverUrl256 = getTrackCoverUrl(track, '256y256');
+      const coverUrl128 = getTrackCoverUrl(track, '128y128');
+      const coverUrl96 = getTrackCoverUrl(track, '96y96');
 
       const artwork = [
-        { src: coverUrl96, type: 'image/jpeg', sizes: '96x96' },
-        { src: coverUrl128, type: 'image/jpeg', sizes: '128x128' },
-        { src: coverUrl256, type: 'image/jpeg', sizes: '256x256' },
-        { src: coverUrl384, type: 'image/jpeg', sizes: '384x384' },
         { src: coverUrl512, type: 'image/jpeg', sizes: '512x512' },
-        { src: coverUrl800, type: 'image/jpeg', sizes: '800x800' }
-      ];
+        { src: coverUrl800, type: 'image/jpeg', sizes: '800x800' },
+        { src: coverUrl384, type: 'image/jpeg', sizes: '384x384' },
+        { src: coverUrl256, type: 'image/jpeg', sizes: '256x256' },
+        { src: coverUrl128, type: 'image/jpeg', sizes: '128x128' },
+        { src: coverUrl96, type: 'image/jpeg', sizes: '96x96' }
+      ].filter((item) => !!item.src);
 
       navigator.mediaSession.metadata = new window.MediaMetadata({
         title: combinedTitle,
@@ -357,6 +366,7 @@ class AudioService {
       nativeBridge.updatePlayState({
         isPlaying: activeIsPlaying,
         userPlayIntent: this.userPlayIntent,
+        mediaSessionAvailable: this.supportsMediaSession,
         title: this.currentTrack.name || '',
         artist: artists ? artists.join(' / ') : '',
         album: album || '',
@@ -729,17 +739,123 @@ class AudioService {
   }
 
   public async resume(): Promise<boolean> {
+    // 原生打断恢复会多次重试；同一时间只允许一个恢复流程，避免重复 play 互相打断。
+    if (this.resumeInFlight) return this.resumeInFlight;
+
+    const resumePromise = this.performResume();
+    this.resumeInFlight = resumePromise;
+    try {
+      return await resumePromise;
+    } finally {
+      if (this.resumeInFlight === resumePromise) {
+        this.resumeInFlight = null;
+      }
+    }
+  }
+
+  private async performResume(): Promise<boolean> {
     this.forceResetOperationLock();
     this.userPlayIntent = true;
+
+    const track = this.currentTrack;
+    if (!track || !this.audio.src) return false;
+
+    // 打断后 WebKit 可能已清空 Media Session；播放前先重新建立元数据与远程控制。
+    this.refreshMediaSession();
+
     try {
       await this.audio.play();
-      return true;
+      if (!this.audio.paused) {
+        this.refreshMediaSession();
+        return true;
+      }
     } catch (error) {
-      console.error('恢复音频播放失败:', error);
+      console.warn('[AudioService] 直接恢复播放失败，尝试重建媒体元素:', error);
+    }
+
+    const recovered = await this.reloadAndResumeAfterInterruption();
+    if (!recovered) {
       this.updateMediaSessionState(false);
       this.emit('pause');
-      return false;
     }
+    return recovered;
+  }
+
+  /** 打断可能让 HTMLMediaElement 进入无法直接 play 的状态；重设同一 src 重建 WebKit 媒体会话。 */
+  private reloadAndResumeAfterInterruption(): Promise<boolean> {
+    const source = this.audio.src;
+    if (!source) return Promise.resolve(false);
+
+    const resumePosition = isFinite(this.audio.currentTime) ? this.audio.currentTime : 0;
+    const resumeRate = this.playbackRate;
+
+    if (this.pendingLoadCleanup) {
+      this.pendingLoadCleanup();
+      this.pendingLoadCleanup = null;
+    }
+
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+      const cleanup = () => {
+        this.audio.removeEventListener('loadedmetadata', onReady);
+        this.audio.removeEventListener('error', onError);
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+      };
+
+      const finish = (success: boolean) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (success) this.refreshMediaSession();
+        resolve(success);
+      };
+
+      const onReady = () => {
+        try {
+          if (resumePosition > 0) this.audio.currentTime = resumePosition;
+          this.audio.playbackRate = resumeRate;
+        } catch (error) {
+          console.warn('[AudioService] 恢复播放进度失败:', error);
+        }
+
+        void this.audio
+          .play()
+          .then(() => {
+            this.userPlayIntent = true;
+            finish(!this.audio.paused);
+          })
+          .catch((error) => {
+            console.warn('[AudioService] 重建媒体元素后播放失败:', error);
+            finish(false);
+          });
+      };
+
+      const onError = () => finish(false);
+
+      timeoutId = setTimeout(() => finish(false), 12000);
+      this.audio.addEventListener('loadedmetadata', onReady, { once: true });
+      this.audio.addEventListener('error', onError, { once: true });
+
+      try {
+        this.audio.src = source;
+        this.audio.load();
+      } catch (error) {
+        console.warn('[AudioService] 重建媒体元素失败:', error);
+        finish(false);
+      }
+    });
+  }
+
+  /** 让 WebKit 重新持有 Now Playing 卡片、封面和手动远程控制。 */
+  public refreshMediaSession() {
+    if (!this.currentTrack) return;
+    this.updateMediaSessionMetadata(this.currentTrack);
+    this.updateMediaSessionState(!this.audio.paused);
   }
 
   public pause() {

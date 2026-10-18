@@ -1,3 +1,4 @@
+import { NativeAudioElement } from '@/services/nativeAudioElement';
 import { nativeBridge } from '@/services/nativeBridge';
 import { playbackDiagnostics } from '@/services/playbackDiagnostics';
 import { resourceCacheService } from '@/services/resourceCacheService';
@@ -49,8 +50,11 @@ class AudioService {
   private callbacks: { [key: string]: Function[] } = {};
 
   constructor() {
-    // Create persistent audio element
-    this.audio = new Audio();
+    // Create persistent audio element. iOS uses native AVPlayer so background
+    // interruption recovery and Now Playing are not dependent on WKWebView execution.
+    this.audio = nativeBridge.isIOS
+      ? (new NativeAudioElement() as unknown as HTMLAudioElement)
+      : new Audio();
     playbackDiagnostics.log('audio-service-init', {
       isIOS: nativeBridge.isIOS,
       mediaSession: this.supportsMediaSession
@@ -134,11 +138,32 @@ class AudioService {
   // ==================== MediaSession ====================
 
   private get supportsMediaSession(): boolean {
+    // iOS now uses native AVPlayer + MPNowPlayingInfoCenter exclusively.
     return (
+      !nativeBridge.isIOS &&
       typeof navigator !== 'undefined' &&
       'mediaSession' in navigator &&
       typeof window.MediaMetadata === 'function'
     );
+  }
+
+  private updateNativeAudioMetadata(track: SongResult) {
+    if (nativeBridge.isIOS || !track) return;
+    const artists = track.ar
+      ? track.ar.map((a) => a.name)
+      : (track as any).song?.artists?.map((a: any) => a.name);
+    const album = track.al ? track.al.name : (track as any).song?.album?.name;
+    const duration =
+      (track.dt ? track.dt / 1000 : 0) ||
+      ((track as any).duration ? (track as any).duration / 1000 : 0);
+
+    (this.audio as any).setMetadata?.({
+      title: track.name || '',
+      artist: artists ? artists.join(' / ') : '',
+      album: album || '',
+      artworkUrl: getTrackCoverUrl(track, '512y512'),
+      duration: duration > 0 ? duration : undefined
+    });
   }
 
   private initMediaSession() {
@@ -211,6 +236,11 @@ class AudioService {
   public updateCurrentLyric(text: string) {
     const trimmed = (text || '').trim();
     this.currentLyric = trimmed;
+
+    if (nativeBridge.isIOS) {
+      (this.audio as any).updateLyric?.(trimmed);
+      return;
+    }
 
     try {
       if (this.supportsMediaSession) {
@@ -296,6 +326,11 @@ class AudioService {
   }
 
   private updateMediaSessionMetadata(track: SongResult) {
+    if (nativeBridge.isIOS) {
+      this.updateNativeAudioMetadata(track);
+      return;
+    }
+
     try {
       if (!this.supportsMediaSession) {
         // iOS 14/15 的 WKWebView 可能缺少 Media Session / MediaMetadata，原生控制中心仍需完整元数据。
@@ -382,7 +417,7 @@ class AudioService {
   }
 
   private updateMediaSessionState(isPlaying: boolean) {
-    if ('mediaSession' in navigator) {
+    if (this.supportsMediaSession) {
       navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
     }
     this.updateMediaSessionPositionState();
@@ -391,7 +426,7 @@ class AudioService {
 
   private updateMediaSessionPositionState() {
     try {
-      if ('mediaSession' in navigator && this.audio.duration && isFinite(this.audio.duration)) {
+      if (this.supportsMediaSession && this.audio.duration && isFinite(this.audio.duration)) {
         if ('setPositionState' in navigator.mediaSession) {
           navigator.mediaSession.setPositionState({
             duration: this.audio.duration,
@@ -409,6 +444,8 @@ class AudioService {
    * 同步播放状态到 iOS 原生锁屏与控制中心
    */
   private syncNativePlayState(isPlaying?: boolean) {
+    // iOS metadata, progress, and remote commands are owned by NativeAudioManager.
+    if (nativeBridge.isIOS) return;
     if (!this.currentTrack) return;
     try {
       const artists = this.currentTrack.ar
@@ -703,6 +740,7 @@ class AudioService {
 
     if (isSameUrl) {
       this.currentTrack = track;
+      this.updateNativeAudioMetadata(track);
       if (seekTime > 0) this.audio.currentTime = seekTime;
       if (isPlay) {
         void this.audio.play().catch((error) => {
@@ -811,6 +849,7 @@ class AudioService {
 
         // Change source and load
         this.audio.src = url;
+        this.updateNativeAudioMetadata(track);
         this.audio.load();
       };
 
@@ -1033,7 +1072,7 @@ class AudioService {
     this.mediaSessionNudgeTimers.forEach((timer) => clearTimeout(timer));
     this.mediaSessionNudgeTimers = [];
     this.nativeTrackKey = '';
-    if ('mediaSession' in navigator) {
+    if (this.supportsMediaSession) {
       navigator.mediaSession.playbackState = 'none';
     }
   }

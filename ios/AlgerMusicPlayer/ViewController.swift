@@ -26,7 +26,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     override func viewDidLoad() {
         super.viewDidLoad()
         setupViews()
-        setupRemoteCommandHandler()
+        setupNativeAudioBridge()
         loadWebApp()
     }
 
@@ -89,10 +89,24 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         ])
     }
 
-    private func setupRemoteCommandHandler() {
-        NowPlayingManager.shared.onCommandReceived = { [weak self] command, arg in
-            self?.sendRemoteCommandToWeb(command: command, arg: arg)
+    private func setupNativeAudioBridge() {
+        NativeAudioManager.shared.start()
+        NativeAudioManager.shared.onEvent = { [weak self] event, payload in
+            self?.sendNativeAudioEvent(event, payload)
         }
+        NativeAudioManager.shared.onRemoteCommand = { [weak self] command in
+            self?.sendRemoteCommandToWeb(command: command, arg: nil)
+        }
+    }
+
+    private func sendNativeAudioEvent(_ event: String, _ payload: [String: Any]) {
+        guard let webView = self.webView else { return }
+        webView.callAsyncJavaScript(
+            "return window.__NATIVE_AUDIO_EVENT__ ? window.__NATIVE_AUDIO_EVENT__(event, payload) : null;",
+            arguments: ["event": event, "payload": payload],
+            in: nil,
+            in: .page
+        ) { _ in }
     }
 
     private func sendRemoteCommandToWeb(command: String, arg: Double?, attempt: Int = 0) {

@@ -26,6 +26,7 @@ type RemoteCommandHandler = (command: string, arg?: any) => void | Promise<void>
 
 class NativeBridge {
   private remoteCommandHandler: RemoteCommandHandler | null = null;
+  private nativeAudioEventHandler: ((event: string, payload?: any) => void) | null = null;
 
   /**
    * 判断是否运行在 iOS 原生 WKWebView 容器中
@@ -49,6 +50,9 @@ class NativeBridge {
     (window as any).__NATIVE_BRIDGE__ = {
       // 返回 Promise，让原生 callAsyncJavaScript 能等待命令真正执行完成。
       handleRemoteCommand: (command: string, arg?: any) => this.dispatchRemoteCommand(command, arg)
+    };
+    (window as any).__NATIVE_AUDIO_EVENT__ = (event: string, payload?: any) => {
+      this.nativeAudioEventHandler?.(event, payload);
     };
   }
 
@@ -99,6 +103,55 @@ class NativeBridge {
   public preloadArtwork(url: string) {
     if (!this.isIOS || !url) return;
     this.postMessage('preloadArtwork', { artworkUrl: url });
+  }
+
+  public setNativeAudioEventHandler(handler: (event: string, payload?: any) => void) {
+    this.nativeAudioEventHandler = handler;
+  }
+
+  public nativeAudioLoad(payload: Record<string, any>) {
+    if (!this.isIOS) return;
+    this.postMessage('nativeAudioLoad', payload);
+  }
+
+  public nativeAudioPlay() {
+    if (!this.isIOS) return;
+    this.postMessage('nativeAudioPlay');
+  }
+
+  public nativeAudioPause() {
+    if (!this.isIOS) return;
+    this.postMessage('nativeAudioPause');
+  }
+
+  public nativeAudioSeek(time: number) {
+    if (!this.isIOS) return;
+    this.postMessage('nativeAudioSeek', { time });
+  }
+
+  public nativeAudioSetRate(rate: number) {
+    if (!this.isIOS) return;
+    this.postMessage('nativeAudioSetRate', { rate });
+  }
+
+  public nativeAudioSetVolume(volume: number) {
+    if (!this.isIOS) return;
+    this.postMessage('nativeAudioSetVolume', { volume });
+  }
+
+  public nativeAudioStop() {
+    if (!this.isIOS) return;
+    this.postMessage('nativeAudioStop');
+  }
+
+  public nativeAudioUpdateMetadata(metadata: Record<string, any>) {
+    if (!this.isIOS) return;
+    this.postMessage('nativeAudioUpdateMetadata', metadata);
+  }
+
+  public nativeAudioUpdateLyric(text: string) {
+    if (!this.isIOS) return;
+    this.postMessage('nativeAudioUpdateLyric', { text });
   }
 
   /** 复制诊断文本；iOS 使用原生 UIPasteboard，避免 WKWebView 权限差异。 */

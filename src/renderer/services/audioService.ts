@@ -752,6 +752,16 @@ class AudioService {
     }
   }
 
+  /** 系统打断专用：停止发声，但保留用户播放意图供打断结束后恢复。 */
+  public pauseForInterruption() {
+    this.forceResetOperationLock();
+    try {
+      this.audio.pause();
+    } catch (error) {
+      console.error('系统打断暂停音频失败:', error);
+    }
+  }
+
   public stop() {
     this.forceResetOperationLock();
     this.userPlayIntent = false;

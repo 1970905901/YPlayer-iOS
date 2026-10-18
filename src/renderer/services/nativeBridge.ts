@@ -182,6 +182,10 @@ class NativeBridge {
           playerStore.setIsPlay(false);
           playerStore.userPlayIntent = false;
           break;
+        case 'interruptionPause':
+          audioService.pauseForInterruption();
+          playerStore.setIsPlay(false);
+          break;
         case 'togglePlayPause':
           // 以真实 audio 元素状态为准，避免控制中心与 playerStore 状态短暂不一致时反向切换。
           if (audioService.isPlaying()) {

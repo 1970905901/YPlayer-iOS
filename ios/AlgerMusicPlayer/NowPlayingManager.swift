@@ -259,8 +259,8 @@ final class NowPlayingManager {
             self.publishCurrentInfo()
             self.schedulePausedStateReassert()
             if !self.currentInfo.isEmpty {
-                // pause 是幂等操作；即使原生状态短暂滞后，也确保真正的 Web 音频停止。
-                self.dispatchRemoteCommand("pause")
+                // 区分系统打断与用户暂停：前者保留播放意图，打断结束后才能自动恢复。
+                self.dispatchRemoteCommand(allowAutoResume ? "interruptionPause" : "pause")
             }
         }
     }

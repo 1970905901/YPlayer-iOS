@@ -55,6 +55,11 @@ export const initMusicHook = (store: ReturnType<typeof usePlayerStore>) => {
         store.setIsPlay(false);
         store.userPlayIntent = false;
         break;
+      case 'interruptionPause':
+        // 系统打断只停止当前音频，不清除“用户原本要播放”的意图。
+        audioService.pauseForInterruption();
+        store.setIsPlay(false);
+        break;
       case 'togglePlayPause':
         if (audioService.isPlaying()) {
           audioService.pause();

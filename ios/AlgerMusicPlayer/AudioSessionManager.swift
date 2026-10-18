@@ -59,7 +59,7 @@ final class AudioSessionManager {
             return
         }
 
-        let intervals = [0.5, 1.5, 3.0, 5.0, 8.0, 12.0, 18.0, 25.0]
+        let intervals = [0.5, 1.5, 3.0, 5.0, 8.0, 12.0, 18.0, 25.0, 35.0, 45.0, 60.0]
         for delay in intervals {
             let item = DispatchWorkItem { [weak self] in
                 guard let self = self else { return }
@@ -69,6 +69,12 @@ final class AudioSessionManager {
                     return
                 }
                 guard !AVAudioSession.sharedInstance().isOtherAudioPlaying else { return }
+
+                // 打断前正在播放时恢复真实播放，Control Center 才能重新持有 Now Playing 资格。
+                if NowPlayingManager.shared.resumeAfterInterruptionIfPossible() {
+                    self.cancelPausedItemRecovery()
+                    return
+                }
 
                 guard self.reactivateAudioSession() else { return }
                 self.cancelPausedItemRecovery()

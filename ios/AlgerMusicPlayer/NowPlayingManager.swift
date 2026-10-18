@@ -49,6 +49,15 @@ final class NowPlayingManager {
         isCurrentlyPlaying
     }
 
+    /// 打断前正在播放、当前已暂停且仍有媒体项时，允许恢复真实播放。
+    func resumeAfterInterruptionIfPossible() -> Bool {
+        guard shouldResumeAfterInterruption, !isCurrentlyPlaying, hasActiveNowPlayingItem else {
+            return false
+        }
+        handleRemotePlay()
+        return true
+    }
+
     private init() {
         // 保持近期播放歌曲封面缓存（30 首），确保切歌与上下首秒出封面无空白延迟。
         imageCache.countLimit = 30
@@ -240,11 +249,12 @@ final class NowPlayingManager {
                 return
             }
 
-            let canResume = shouldResume && self.shouldResumeAfterInterruption
+            // 以用户真实播放意图为主；系统 shouldResume 仅作为诊断信息。
+            let canResume = self.shouldResumeAfterInterruption
             self.shouldResumeAfterInterruption = false
 
             if canResume {
-                print("[NowPlayingManager] 音频打断结束，自动恢复播放")
+                print("[NowPlayingManager] 音频打断结束，恢复真实播放（系统建议: \(shouldResume)）")
                 self.handleRemotePlay()
                 return
             }

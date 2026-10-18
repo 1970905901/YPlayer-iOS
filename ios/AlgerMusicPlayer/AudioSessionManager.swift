@@ -2,7 +2,7 @@ import Foundation
 import AVFoundation
 
 /// 管理应用音频会话及系统音频中断/路由变化事件。
-/// 音频会话只在用户真正开始播放时激活，暂停或回到前台时不会抢占其他 App 的音频焦点。
+/// 次级音频提示不改变播放状态；真实打断结束后按系统建议恢复，暂停时仅在无其他音频时恢复卡片资格。
 final class AudioSessionManager {
     static let shared = AudioSessionManager()
 
@@ -162,7 +162,8 @@ final class AudioSessionManager {
 
             // 不自动恢复实际播放，但在没有其他音频时恢复暂停中的控制中心卡片。
             NowPlayingManager.shared.handleInterruptionEnded(shouldResume: shouldResume)
-            if !AVAudioSession.sharedInstance().isOtherAudioPlaying,
+            if !NowPlayingManager.shared.isCurrentlyPlayingForAudioSession,
+               !AVAudioSession.sharedInstance().isOtherAudioPlaying,
                self.reactivateAudioSession() {
                 NowPlayingManager.shared.reassertNowPlayingInfo()
             }
@@ -183,7 +184,7 @@ final class AudioSessionManager {
         switch reason {
         case .oldDeviceUnavailable:
             print("[AudioSessionManager] 旧音频设备断开（耳机拔出/蓝牙断开），自动暂停")
-            NowPlayingManager.shared.handleInterruptionBegan()
+            NowPlayingManager.shared.handleInterruptionBegan(allowAutoResume: false)
             schedulePausedItemRecovery()
         default:
             break
@@ -199,13 +200,10 @@ final class AudioSessionManager {
 
         switch hintType {
         case .begin:
-            print("[AudioSessionManager] 主音频抢占提示，暂停并保持控制中心信息")
-            NowPlayingManager.shared.handleInterruptionBegan()
-            schedulePausedItemRecovery()
+            // 次级音频提示是系统混音建议，不是硬打断。游戏/短视频开始发声时不应强制暂停音乐。
+            print("[AudioSessionManager] 次级音频提示开始，保持当前播放")
         case .end:
-            print("[AudioSessionManager] 主音频结束，保持暂停，等待用户明确恢复")
-            NowPlayingManager.shared.handleInterruptionEnded(shouldResume: false)
-            schedulePausedItemRecovery()
+            print("[AudioSessionManager] 次级音频提示结束")
         @unknown default:
             break
         }

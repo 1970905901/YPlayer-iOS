@@ -653,7 +653,7 @@ export const usePlaylistStore = defineStore(
           if (playerCore.play) {
             playerCore.setPlayMusic(false);
             const { audioService } = await import('@/services/audioService');
-            audioService.getCurrentSound()?.pause();
+            audioService.pause();
             playerCore.userPlayIntent = false;
           } else {
             playerCore.setPlayMusic(true);

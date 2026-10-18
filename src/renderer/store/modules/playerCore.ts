@@ -119,10 +119,8 @@ export const usePlayerCoreStore = defineStore(
      */
     const handlePause = async () => {
       try {
-        const currentSound = audioService.getCurrentSound();
-        if (currentSound) {
-          currentSound.pause();
-        }
+        // 统一走 audioService.pause，确保原生侧同步清除用户播放意图。
+        audioService.pause();
         setPlayMusic(false);
         userPlayIntent.value = false;
       } catch (error) {

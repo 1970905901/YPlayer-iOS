@@ -55,7 +55,7 @@ class AudioService {
     // Bind native DOM events
     this.bindAudioEvents();
 
-    if ('mediaSession' in navigator) {
+    if ('mediaSession' in navigator && !nativeBridge.isIOS) {
       this.initMediaSession();
     }
 
@@ -167,7 +167,7 @@ class AudioService {
     this.currentLyric = trimmed;
 
     try {
-      if ('mediaSession' in navigator && navigator.mediaSession.metadata) {
+      if ('mediaSession' in navigator && !nativeBridge.isIOS && navigator.mediaSession.metadata) {
         // 歌词单独展示在副标题位置，不添加歌手名（歌手名已合并至标题行，保持同字号、同粗细、同颜色）
         const artists = this.currentTrack?.ar
           ? this.currentTrack.ar.map((a: any) => a.name)
@@ -190,7 +190,10 @@ class AudioService {
 
   private updateMediaSessionMetadata(track: SongResult) {
     try {
-      if (!('mediaSession' in navigator)) return;
+      if (!('mediaSession' in navigator) || nativeBridge.isIOS) {
+        this.syncNativePlayState(!this.audio.paused);
+        return;
+      }
 
       const artists = track.ar
         ? track.ar.map((a) => a.name)
@@ -260,7 +263,7 @@ class AudioService {
   }
 
   private updateMediaSessionState(isPlaying: boolean) {
-    if ('mediaSession' in navigator) {
+    if ('mediaSession' in navigator && !nativeBridge.isIOS) {
       navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
     }
     this.updateMediaSessionPositionState();
@@ -269,7 +272,12 @@ class AudioService {
 
   private updateMediaSessionPositionState() {
     try {
-      if ('mediaSession' in navigator && this.audio.duration && isFinite(this.audio.duration)) {
+      if (
+        'mediaSession' in navigator &&
+        !nativeBridge.isIOS &&
+        this.audio.duration &&
+        isFinite(this.audio.duration)
+      ) {
         if ('setPositionState' in navigator.mediaSession) {
           navigator.mediaSession.setPositionState({
             duration: this.audio.duration,
@@ -710,7 +718,7 @@ class AudioService {
       console.error('停止音频失败:', error);
     }
     this.currentTrack = null;
-    if ('mediaSession' in navigator) {
+    if ('mediaSession' in navigator && !nativeBridge.isIOS) {
       navigator.mediaSession.playbackState = 'none';
     }
   }

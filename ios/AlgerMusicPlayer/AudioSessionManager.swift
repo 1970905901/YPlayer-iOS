@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import UIKit
 
 /// 管理应用音频会话及系统音频中断/插拔事件
 final class AudioSessionManager {
@@ -10,6 +11,7 @@ final class AudioSessionManager {
     private var silenceSecondaryObserver: NSObjectProtocol?
     private var mediaServicesResetObserver: NSObjectProtocol?
     private var recoveryWorkItems = [DispatchWorkItem]()
+    private var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
 
     private init() {
         setupObservers()
@@ -31,25 +33,40 @@ final class AudioSessionManager {
         }
     }
 
-    /// 取消挂起的自愈检测
-    private func cancelRecoveryWorkItems() {
-        recoveryWorkItems.forEach { $0.cancel() }
-        recoveryWorkItems.removeAll()
+    private func beginBackgroundAssertion() {
+        endBackgroundAssertion()
+        backgroundTaskId = UIApplication.shared.beginBackgroundTask(withName: "AudioInterruptionRecovery") { [weak self] in
+            self?.endBackgroundAssertion()
+        }
     }
 
-    /// 当收到打断开始但可能由于第三方应用未发 .ended 时，通过梯度延迟轮询自愈
+    private func endBackgroundAssertion() {
+        if backgroundTaskId != .invalid {
+            UIApplication.shared.endBackgroundTask(backgroundTaskId)
+            backgroundTaskId = .invalid
+        }
+    }
+
+    /// 取消挂起的自愈检测与后台任务
+    func cancelRecoveryWorkItems() {
+        recoveryWorkItems.forEach { $0.cancel() }
+        recoveryWorkItems.removeAll()
+        endBackgroundAssertion()
+    }
+
+    /// 当收到打断开始或被其他应用暂停时，通过系统后台任务保障 + 梯度轮询持续保活音频会话与控制中心
     func scheduleInterruptionRecovery() {
         cancelRecoveryWorkItems()
-        let intervals = [0.8, 1.8, 3.2, 5.0, 8.0, 12.0, 18.0, 25.0]
-        for delay in intervals {
+        beginBackgroundAssertion()
+        let intervals = [0.5, 1.2, 2.5, 4.0, 6.5, 10.0, 15.0, 22.0, 30.0, 45.0, 60.0]
+        for (index, delay) in intervals.enumerated() {
+            let isLast = (index == intervals.count - 1)
             let item = DispatchWorkItem { [weak self] in
                 guard let self = self else { return }
-                // 若其他应用已停止播放，尝试重新激活音频会话并刷新控制中心
-                if !AVAudioSession.sharedInstance().isOtherAudioPlaying {
-                    print("[AudioSessionManager] 轮询检测到其他应用已停止播放，自动恢复音频会话并同步控制中心")
-                    self.cancelRecoveryWorkItems()
-                    self.reactivateAudioSession()
-                    NowPlayingManager.shared.reassertNowPlayingInfo()
+                self.reactivateAudioSession()
+                NowPlayingManager.shared.reassertNowPlayingInfo()
+                if isLast {
+                    self.endBackgroundAssertion()
                 }
             }
             recoveryWorkItems.append(item)
@@ -145,7 +162,6 @@ final class AudioSessionManager {
             scheduleInterruptionRecovery()
 
         case .ended:
-            cancelRecoveryWorkItems()
             let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
             let shouldResume = options.contains(.shouldResume)
@@ -154,6 +170,7 @@ final class AudioSessionManager {
             // 打断结束后重新激活音频会话，确保控制中心不会因为会话失活而消失
             reactivateAudioSession()
             NowPlayingManager.shared.handleInterruptionEnded(shouldResume: shouldResume)
+            scheduleInterruptionRecovery()
 
         @unknown default:
             break
@@ -171,6 +188,7 @@ final class AudioSessionManager {
         case .oldDeviceUnavailable:
             print("[AudioSessionManager] 旧音频设备断开连接 (耳机拔出/蓝牙断开)，自动切换为暂停状态")
             NowPlayingManager.shared.handleInterruptionBegan()
+            scheduleInterruptionRecovery()
         default:
             break
         }
@@ -189,10 +207,10 @@ final class AudioSessionManager {
             NowPlayingManager.shared.handleInterruptionBegan()
             scheduleInterruptionRecovery()
         case .end:
-            cancelRecoveryWorkItems()
             print("[AudioSessionManager] 主导音频播放完毕，重新激活音频会话并保持控制中心信息")
             reactivateAudioSession()
             NowPlayingManager.shared.handleInterruptionEnded(shouldResume: false)
+            scheduleInterruptionRecovery()
         @unknown default:
             break
         }

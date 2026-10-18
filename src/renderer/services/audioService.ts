@@ -130,7 +130,7 @@ class AudioService {
     });
 
     navigator.mediaSession.setActionHandler('stop', () => {
-      this.stop();
+      this.pause();
     });
 
     navigator.mediaSession.setActionHandler('seekto', (event) => {
@@ -236,7 +236,7 @@ class AudioService {
           this.pause();
         });
         navigator.mediaSession.setActionHandler('stop', () => {
-          this.stop();
+          this.pause();
         });
         navigator.mediaSession.setActionHandler('seekto', (event) => {
           if (event.seekTime !== undefined) {
@@ -273,12 +273,11 @@ class AudioService {
         if ('setPositionState' in navigator.mediaSession) {
           navigator.mediaSession.setPositionState({
             duration: this.audio.duration,
-            playbackRate: this.playbackRate,
+            playbackRate: this.audio.paused ? 0 : this.playbackRate,
             position: this.audio.currentTime
           });
         }
       }
-      this.syncNativePlayState();
     } catch (error) {
       console.error('更新媒体会话位置状态时出错:', error);
     }
@@ -315,15 +314,16 @@ class AudioService {
           ? this.audio.duration
           : trackDurationSec;
 
+      const activeIsPlaying = isPlaying !== undefined ? isPlaying : !this.audio.paused;
       nativeBridge.updatePlayState({
-        isPlaying: isPlaying !== undefined ? isPlaying : !this.audio.paused,
+        isPlaying: activeIsPlaying,
         title: this.currentTrack.name || '',
         artist: artists ? artists.join(', ') : '',
         album: album || '',
         artworkUrl: picUrl,
         duration: duration > 0 ? duration : 0,
         currentTime: isFinite(this.audio.currentTime) ? this.audio.currentTime : 0,
-        playbackRate: this.playbackRate
+        playbackRate: activeIsPlaying ? this.playbackRate : 0
       });
     } catch (e) {
       console.warn('[AudioService] syncNativePlayState error:', e);

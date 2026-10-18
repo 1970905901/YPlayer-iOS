@@ -30,7 +30,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneWillResignActive(_ scene: UIScene) {}
 
-    func sceneWillEnterForeground(_ scene: UIScene) {}
+    func sceneWillEnterForeground(_ scene: UIScene) {
+        UIApplication.shared.beginReceivingRemoteControlEvents()
+        AudioSessionManager.shared.reactivateAudioSession()
+        NowPlayingManager.shared.reassertNowPlayingInfo()
+    }
 
     func sceneDidEnterBackground(_ scene: UIScene) {}
 }

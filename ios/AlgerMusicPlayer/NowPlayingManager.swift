@@ -155,6 +155,7 @@ final class NowPlayingManager {
         }
         currentInfo = info
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        MPNowPlayingInfoCenter.default().playbackState = .playing
         dispatchRemoteCommand("play")
     }
 
@@ -170,6 +171,7 @@ final class NowPlayingManager {
         }
         currentInfo = info
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        MPNowPlayingInfoCenter.default().playbackState = .paused
         dispatchRemoteCommand("pause")
     }
 
@@ -206,6 +208,7 @@ final class NowPlayingManager {
         }
         currentInfo = info
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        MPNowPlayingInfoCenter.default().playbackState = .paused
         enforceRemoteCommands()
         dispatchRemoteCommand("pause")
     }
@@ -225,6 +228,7 @@ final class NowPlayingManager {
         }
         currentInfo = info
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        MPNowPlayingInfoCenter.default().playbackState = .paused
     }
 
     /// 确保当前歌曲元数据与控制中心同步（音频服务重置或应用激活时使用）
@@ -243,6 +247,7 @@ final class NowPlayingManager {
             }
             self.currentInfo = info
             MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+            MPNowPlayingInfoCenter.default().playbackState = self.isCurrentlyPlaying ? .playing : .paused
         }
     }
 
@@ -296,14 +301,13 @@ final class NowPlayingManager {
             }
             self.currentInfo = info
             MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+            MPNowPlayingInfoCenter.default().playbackState = self.isCurrentlyPlaying ? .playing : .paused
         }
     }
 
     /// 更新锁屏及控制中心播放信息
     func updateNowPlaying(info: PlaybackStateInfo) {
-        if info.isPlaying {
-            AudioSessionManager.shared.reactivateAudioSession()
-        }
+        AudioSessionManager.shared.reactivateAudioSession()
         baseArtist = info.artist
         baseTitle = info.title
         currentLyric = ""
@@ -341,13 +345,9 @@ final class NowPlayingManager {
             artworkLoadTimeoutWorkItem?.cancel()
             artworkLoadTimeoutWorkItem = nil
             pendingNowPlayingInfo = nil
-            if !self.isCurrentlyPlaying {
-                cachedArtwork = nil
-                currentArtworkUrl = nil
-                imageCache.removeAllObjects()
-            }
             self.currentInfo = nowPlayingInfo
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+            MPNowPlayingInfoCenter.default().playbackState = info.isPlaying ? .playing : .paused
             return
         }
 
@@ -366,6 +366,7 @@ final class NowPlayingManager {
             nowPlayingInfo[MPMediaItemPropertyArtwork] = cached
             self.currentInfo = nowPlayingInfo
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+            MPNowPlayingInfoCenter.default().playbackState = info.isPlaying ? .playing : .paused
             return
         }
 
@@ -383,6 +384,7 @@ final class NowPlayingManager {
             nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
             self.currentInfo = nowPlayingInfo
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+            MPNowPlayingInfoCenter.default().playbackState = info.isPlaying ? .playing : .paused
             return
         }
 
@@ -398,6 +400,7 @@ final class NowPlayingManager {
             self.pendingNowPlayingInfo = nil
             self.currentInfo = pending
             MPNowPlayingInfoCenter.default().nowPlayingInfo = pending
+            MPNowPlayingInfoCenter.default().playbackState = self.isCurrentlyPlaying ? .playing : .paused
         }
         self.artworkLoadTimeoutWorkItem = timeoutWorkItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: timeoutWorkItem)
@@ -555,6 +558,7 @@ final class NowPlayingManager {
         currentInfo = info
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        MPNowPlayingInfoCenter.default().playbackState = isCurrentlyPlaying ? .playing : .paused
     }
 
     /// 清除所有封面图片缓存，响应整软件资源缓存清理或不缓存策略
